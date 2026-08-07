@@ -2,7 +2,8 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 
-export function PageLoader({ message = 'Loading...' }: { message?: string }) {
+export function PageLoader({ message, label = 'Loading...' }: { message?: string; label?: string }) {
+  const displayMessage = message || label;
   return (
     <div className="flex flex-col items-center justify-center min-h-64 gap-4">
       <motion.div
@@ -11,7 +12,7 @@ export function PageLoader({ message = 'Loading...' }: { message?: string }) {
       >
         <Loader2 className="w-6 h-6 text-muted-foreground" />
       </motion.div>
-      <p className="text-body-sm text-muted-foreground">{message}</p>
+      <p className="text-body-sm text-muted-foreground">{displayMessage}</p>
     </div>
   );
 }

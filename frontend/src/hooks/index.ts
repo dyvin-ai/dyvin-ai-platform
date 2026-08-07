@@ -4,3 +4,6 @@ export * from './useWorkspaces';
 export * from './useSecurity';
 export * from './useNotifications';
 export * from './useFeatureFlags';
+export * from './useReports';
+export * from './useBusinessIntelligence';
+export * from './useVisibilityAnalytics';
