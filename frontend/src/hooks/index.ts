@@ -17,3 +17,4 @@ export * from './useUnderstandingPlatform';
 export * from './useConsistencyPlatform';
 export * from './useAttributionPlatform';
 export * from './useExecutivePlatform';
+export * from './useAutonomousOps';
