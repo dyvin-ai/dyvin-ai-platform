@@ -14,3 +14,4 @@ export * from './useCompetitorIntelligence';
 export * from './useRecommendationIntelligence';
 export * from './useRecommendationPlatform';
 export * from './useUnderstandingPlatform';
+export * from './useConsistencyPlatform';
