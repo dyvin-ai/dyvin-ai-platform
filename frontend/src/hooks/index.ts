@@ -19,3 +19,4 @@ export * from './useAttributionPlatform';
 export * from './useExecutivePlatform';
 export * from './useAutonomousOps';
 export * from './usePlatformAdmin';
+export * from './useObservabilityPlatform';
