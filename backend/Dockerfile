@@ -6,6 +6,7 @@ WORKDIR /app
 # Copy dependency manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json ./backend/
+COPY shared/package.json ./shared/
 COPY backend/prisma ./backend/prisma/
 
 # Install pnpm and dependencies
@@ -14,7 +15,9 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source code and generate Prisma client
 COPY backend ./backend
+COPY shared ./shared
 RUN pnpm --filter @dyvin-ai/backend prisma:generate
+RUN pnpm --filter @dyvin-ai/shared build
 RUN pnpm --filter @dyvin-ai/backend build
 
 # Production Runner Stage
