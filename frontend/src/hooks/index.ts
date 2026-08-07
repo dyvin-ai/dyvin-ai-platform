@@ -9,3 +9,6 @@ export * from './useOpsObservability';
 export * from './useAiSearch';
 export * from './useGovernance';
 export * from './useKnowledgeGraph';
+export * from './useBrandIntelligence';
+export * from './useCompetitorIntelligence';
+export * from './useRecommendationIntelligence';
