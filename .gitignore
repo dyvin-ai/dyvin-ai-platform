@@ -149,6 +149,10 @@ Thumbs.db
 # Typically prisma generated files are in node_modules, but if custom output is specified:
 # prisma/generated/
 
+# Shared build outputs
+shared/*.d.ts
+shared/*.js
+
 # NestJS Build
 /dist
 /development-local
