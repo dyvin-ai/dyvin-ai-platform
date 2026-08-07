@@ -1,11 +1,12 @@
-# Pre-F16 Runtime Root Cause Analysis
+# Runtime Root Cause Analysis — Phase S1
 
-## Executive Summary
+## Technical Root Cause Analysis
 
-Audit of runtime dependencies, environment variables, authentication guards, and state management stores across Phases F1 through F15.
+1. **OAuth Endpoints (404/500)**:
+   - Frontend `OAuthButtons.tsx` triggered redirects to `/api/v1/auth/oauth/${provider}` (Google, GitHub, Microsoft).
+   - Backend `AuthController` lacked endpoint definitions for `@Get('oauth/:provider')` and `@Get('oauth/:provider/callback')`.
+   - Resolution: Added OAuth initiation and callback handlers with `handleOAuthLogin` in `AuthService`.
 
-## Root Cause Audits
-
-1. **Environment Variables**: Ensured JWT secrets, OAuth client IDs, DB connection strings, and CORS origins are properly loaded across development and production settings.
-2. **State Management**: Verified Zustand store isolation (`executiveStore`, `autonomousOpsStore`, `platformAdminStore`, `observabilityPlatformStore`) with no memory leaks or circular dependencies.
-3. **API Contracts**: Confirmed 100% alignment between NestJS controllers and frontend Axios API services.
+2. **Registration Pipe & DTO Validation**:
+   - `ValidationPipe` with `forbidNonWhitelisted: true` rejects unexpected properties.
+   - Resolution: Verified `RegisterDto` property mappings (`email`, `password`, `firstName`, `lastName`).

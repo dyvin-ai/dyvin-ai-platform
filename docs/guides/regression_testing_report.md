@@ -1,12 +1,12 @@
-# Pre-F16 Regression Testing Report
+# Phase S1 Regression Testing Report
 
-## Re-test Matrix Across Phases F1–F15
+## End-to-End Regression Matrix (Phases F1–F15)
 
-- **Phases F1–F8 (Core Platform & Intelligence)**: Retested navigation, dashboards, reports, workflows, search, governance — ✅ PASS
-- **Phase F9 (AI Understanding)**: Retested vector intelligence & prompt engineering — ✅ PASS
-- **Phase F10 (Brand Consistency)**: Retested multi-model consistency matrix — ✅ PASS
-- **Phase F11 (AI Attribution)**: Retested revenue impact & ROI models — ✅ PASS
-- **Phase F12 (Executive Intelligence)**: Retested command center & explainability decision graph — ✅ PASS
-- **Phase F13 (Autonomous Ops)**: Retested SRE copilot & capacity planning — ✅ PASS
-- **Phase F14 (Platform Admin & Billing)**: Retested multi-tenant administration & Stripe/Razorpay billing — ✅ PASS
-- **Phase F15 (Observability & Reliability)**: Retested Prometheus metrics & dependency health — ✅ PASS
+- **F1–F8 (Core Platform & Intelligence)**: Dashboard, reports, workflows, AI search, governance — ✅ PASS
+- **F9 (AI Understanding)**: Prompt engineering & vector intelligence playground — ✅ PASS
+- **F10 (Brand Consistency)**: Consistency matrix & policy manager — ✅ PASS
+- **F11 (AI Attribution Engine)**: Attribution dashboard & ROI models — ✅ PASS
+- **F12 (Executive Intelligence)**: Executive command center & decision tree graph — ✅ PASS
+- **F13 (Autonomous Operations)**: SRE Copilot assistant & capacity planning — ✅ PASS
+- **F14 (Platform Admin & Billing)**: Stripe/Razorpay billing cards & feature flags — ✅ PASS
+- **F15 (Observability & SRE)**: Prometheus metrics console & dependency health — ✅ PASS

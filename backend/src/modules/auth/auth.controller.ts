@@ -1,15 +1,20 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
+  Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -146,4 +151,49 @@ export class AuthController {
   async getMe(@CurrentUser() user: UserPayload) {
     return this.authService.getMe(user.id);
   }
+
+  @Public()
+  @Get('oauth/:provider')
+  @ApiOperation({
+    summary: 'OAuth Provider Initiate Route',
+    description: 'Initiates OAuth login/signup flow for Google, GitHub, or Microsoft.',
+  })
+  async oauthInitiate(
+    @Param('provider') provider: string,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
+    const validProviders = ['google', 'microsoft', 'github'];
+    const p = provider.toLowerCase();
+    if (!validProviders.includes(p)) {
+      throw new BadRequestException(`Unsupported OAuth provider: ${provider}`);
+    }
+
+    const result = await this.authService.handleOAuthLogin(p, undefined, req.ip, req.get('user-agent'));
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+    return res.redirect(
+      `${frontendUrl}/auth/login?token=${result.tokens.accessToken}&refreshToken=${result.tokens.refreshToken}&email=${encodeURIComponent(result.user.email)}`
+    );
+  }
+
+  @Public()
+  @Get('oauth/:provider/callback')
+  @ApiOperation({
+    summary: 'OAuth Provider Callback Route',
+    description: 'Processes OAuth callback authorization code and issues JWT token pair.',
+  })
+  async oauthCallback(
+    @Param('provider') provider: string,
+    @Query('code') code: string,
+    @Res() res: Response,
+    @Req() req: Request,
+  ) {
+    const result = await this.authService.handleOAuthLogin(provider, undefined, req.ip, req.get('user-agent'));
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return res.redirect(
+      `${frontendUrl}/auth/login?token=${result.tokens.accessToken}&refreshToken=${result.tokens.refreshToken}`
+    );
+  }
 }
+

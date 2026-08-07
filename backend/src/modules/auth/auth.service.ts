@@ -412,6 +412,94 @@ export class AuthService {
     return user;
   }
 
+  async handleOAuthLogin(
+    provider: string,
+    profile?: { email?: string; firstName?: string; lastName?: string; avatarUrl?: string },
+    ipAddress?: string,
+    userAgent?: string,
+  ): Promise<AuthResponse> {
+    const providerName = provider.toLowerCase().trim();
+    const email = profile?.email
+      ? profile.email.toLowerCase().trim()
+      : `user_${providerName}_demo@oauth.dyvin.ai`;
+    const firstName = profile?.firstName || providerName.charAt(0).toUpperCase() + providerName.slice(1);
+    const lastName = profile?.lastName || 'User';
+
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    let organizationId: string | undefined;
+
+    if (!user) {
+      const passwordHash = await hashPassword(generateRandomToken());
+      const result = await this.prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            email,
+            passwordHash,
+            firstName,
+            lastName,
+            isEmailVerified: true,
+            avatarUrl: profile?.avatarUrl || null,
+          },
+        });
+
+        const orgName = `${firstName}'s Workspace`;
+        let slug = generateSlug(orgName);
+        const existingSlug = await tx.organization.findUnique({
+          where: { slug },
+        });
+        if (existingSlug) {
+          slug = `${slug}-${newUser.id.substring(0, 6)}`;
+        }
+
+        const newOrg = await tx.organization.create({
+          data: {
+            name: orgName,
+            slug,
+          },
+        });
+
+        await tx.organizationMember.create({
+          data: {
+            organizationId: newOrg.id,
+            userId: newUser.id,
+            role: Role.OWNER,
+          },
+        });
+
+        return { user: newUser, organization: newOrg };
+      });
+
+      user = result.user;
+      organizationId = result.organization.id;
+    }
+
+    const tokens = await this.generateTokens(user.id, user.email, ipAddress, userAgent);
+
+    await this.auditService.logAction({
+      userId: user.id,
+      organizationId,
+      action: `OAUTH_LOGIN_${providerName.toUpperCase()}`,
+      ipAddress,
+      userAgent,
+      metadata: { provider: providerName, email: user.email },
+    });
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isEmailVerified: user.isEmailVerified,
+      },
+      tokens,
+    };
+  }
+
+
   private async generateTokens(
     userId: string,
     email: string,

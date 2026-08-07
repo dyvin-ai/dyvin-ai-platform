@@ -1,15 +1,14 @@
-# Pre-F16 Runtime Discovery Report
+# Runtime Discovery Report — Phase S1
 
-## Overview
+## Executive Overview
 
-Comprehensive runtime audit and discovery report across backend modules, NestJS bootstrap, Prisma client initialization, Redis/BullMQ queues, environment configurations, and Vite SPA setup.
+Comprehensive audit of backend NestJS authentication endpoints, Prisma ORM transaction boundaries, JWT token generation, and OAuth routes (`/api/v1/auth/oauth/:provider`).
 
-## Audit Findings
+## System Audit Findings
 
-| Component | Status | Findings | Action Taken |
+| Component | Status | Finding | Resolution |
 |---|---|---|---|
-| NestJS Bootstrap | Operational | All controllers & services bound cleanly | None required |
-| Prisma ORM | Operational | Client v6.19.3 generated without schema mismatch | Regenerated via `prisma:generate` |
-| Redis / BullMQ | Operational | Redis connection string loaded; worker queues active | Verified queue health |
-| OAuth Strategies | Operational | Google, GitHub, Microsoft Passport strategies registered | Environment variables verified |
-| Vite SPA | Operational | React 18, Tailwind CSS, Framer Motion bundled cleanly | 2,248 modules transformed |
+| `/auth/register` | Operational | Prisma transaction creates `User`, default `Organization`, `OrganizationMember`, and `EmailVerificationToken` | Verified DTO parameters and error handling |
+| `/auth/login` | Operational | Validates password with Argon2id and generates JWT access/refresh token pair | Verified token rotation |
+| OAuth Routes | Restored | Added `/api/v1/auth/oauth/:provider` and `/api/v1/auth/oauth/:provider/callback` routes in `AuthController` | Added `handleOAuthLogin` handler |
+| Database & ORM | Operational | Prisma v6.19.3 schema synchronized with PostgreSQL 16 pool | Verified connection health |
