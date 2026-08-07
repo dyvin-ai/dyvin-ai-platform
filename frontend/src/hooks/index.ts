@@ -7,3 +7,6 @@ export * from './useFeatureFlags';
 export * from './useReports';
 export * from './useBusinessIntelligence';
 export * from './useVisibilityAnalytics';
+export * from './useWorkflows';
+export * from './useIntegrations';
+export * from './useOpsObservability';
