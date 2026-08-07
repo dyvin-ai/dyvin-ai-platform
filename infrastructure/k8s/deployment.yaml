@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dyvin-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dyvin-backend-api
+  namespace: dyvin-prod
+  labels:
+    app: dyvin-backend-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dyvin-backend-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: dyvin-backend-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+      containers:
+        - name: dyvin-backend
+          image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/dyvin-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2048Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          envFrom:
+            - configMapRef:
+                name: dyvin-config
+            - secretRef:
+                name: dyvin-secrets
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: dyvin-backend-hpa
+  namespace: dyvin-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: dyvin-backend-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: dyvin-backend-pdb
+  namespace: dyvin-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: dyvin-backend-api

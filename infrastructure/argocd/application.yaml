@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dyvin-prod-gitops
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: 'https://github.com/dyvin-ai/platform.git'
+    targetRevision: HEAD
+    path: infrastructure/k8s
+  destination:
+    server: 'https://kubernetes.default.svc'
+    namespace: dyvin-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

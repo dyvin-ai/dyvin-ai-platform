@@ -1,0 +1,20 @@
+{
+  "name": "dyvin-ai-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dyvin AI Monorepo - Enterprise AI Recommendation & Visibility Intelligence Platform",
+  "scripts": {
+    "dev:backend": "pnpm --filter @dyvin-ai/backend dev",
+    "dev:frontend": "pnpm --filter @dyvin-ai/frontend dev",
+    "build:backend": "pnpm --filter @dyvin-ai/backend build",
+    "build:frontend": "pnpm --filter @dyvin-ai/frontend build",
+    "build": "pnpm --filter @dyvin-ai/backend build",
+    "test:backend": "pnpm --filter @dyvin-ai/backend test",
+    "test": "pnpm --filter @dyvin-ai/backend test",
+    "prisma:generate": "pnpm --filter @dyvin-ai/backend prisma:generate"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

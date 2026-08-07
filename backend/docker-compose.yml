@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dyvin-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: dyvin
+      POSTGRES_PASSWORD: dyvin_secret_password
+      POSTGRES_DB: dyvin_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U dyvin -d dyvin_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: dyvin-redis
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dyvin-api
+    restart: always
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://dyvin:dyvin_secret_password@postgres:5432/dyvin_db?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: super-secret-jwt-key-change-in-production-min-32-chars
+      OPENAI_API_KEY: sk-proj-dummy-openai-key-for-environment-validation
+      ANTHROPIC_API_KEY: sk-ant-dummy-anthropic-key-for-environment-validation
+      GOOGLE_API_KEY: AIzaSyDummyGoogleKeyForEnvironmentValidation
+      PERPLEXITY_API_KEY: pplx-dummy-perplexity-key-for-environment-validation
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,14 @@
+# Global owners
+*       @singam-naresh
+
+# Backend code owners
+/backend/    @singam-naresh
+
+# Frontend code owners
+/frontend/   @singam-naresh
+
+# Shared code owners
+/shared/     @singam-naresh
+
+# Workflows & CI owners
+/.github/    @singam-naresh

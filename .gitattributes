@@ -1,0 +1,44 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Standard document/source files to be normalized to LF on commit
+*.js text
+*.jsx text
+*.ts text
+*.tsx text
+*.json text
+*.css text
+*.html text
+*.md text
+*.yml text
+*.yaml text
+*.prisma text
+*.editorconfig text
+*.gitattributes text
+*.gitignore text
+
+# Binary files - do not attempt to normalize line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.mp4 binary
+*.mp3 binary
+
+# Bash scripts should always use LF line endings
+*.sh text eol=lf
+
+# Batch and PowerShell files should use CRLF line endings
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
