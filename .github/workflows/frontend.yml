@@ -2,7 +2,7 @@ name: Frontend CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'shared/**'
@@ -10,7 +10,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'frontend/**'
       - 'shared/**'
@@ -32,15 +32,12 @@ jobs:
           node-version: 20
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+        uses: pnpm/action-setup@v4
 
       - name: Get PNPM Store Directory
         id: pnpm-cache
         shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Setup Cache
         uses: actions/cache@v4
@@ -56,10 +53,11 @@ jobs:
       - name: Build Shared
         run: pnpm --filter @dyvin-ai/shared build
 
-      - name: Type Check & Lint
-        run: |
-          pnpm --filter @dyvin-ai/frontend typecheck
-          pnpm --filter @dyvin-ai/frontend lint
+      - name: Type Check
+        run: pnpm --filter @dyvin-ai/frontend typecheck
+
+      - name: Lint
+        run: pnpm --filter @dyvin-ai/frontend lint
 
       - name: Build Frontend
         run: pnpm --filter @dyvin-ai/frontend build

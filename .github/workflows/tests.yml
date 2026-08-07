@@ -2,9 +2,9 @@ name: Monorepo Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -35,9 +35,7 @@ jobs:
           node-version: 20
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+        uses: pnpm/action-setup@v4
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
@@ -45,7 +43,7 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm --filter @dyvin-ai/backend prisma generate
         env:
-          DATABASE_URL: "postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public"
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'
 
       - name: Build Shared
         run: pnpm --filter @dyvin-ai/shared build
@@ -53,4 +51,4 @@ jobs:
       - name: Run All Tests
         run: pnpm test
         env:
-          DATABASE_URL: "postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public"
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'

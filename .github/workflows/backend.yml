@@ -2,7 +2,7 @@ name: Backend CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'backend/**'
       - 'shared/**'
@@ -10,7 +10,7 @@ on:
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'backend/**'
       - 'shared/**'
@@ -47,15 +47,12 @@ jobs:
           node-version: 20
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
+        uses: pnpm/action-setup@v4
 
       - name: Get PNPM Store Directory
         id: pnpm-cache
         shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Setup Cache
         uses: actions/cache@v4
@@ -71,20 +68,21 @@ jobs:
       - name: Generate Prisma Client
         run: pnpm --filter @dyvin-ai/backend prisma generate
         env:
-          DATABASE_URL: "postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public"
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'
 
       - name: Build Shared
         run: pnpm --filter @dyvin-ai/shared build
 
-      - name: Type Check & Lint
-        run: |
-          pnpm --filter @dyvin-ai/backend typecheck
-          pnpm --filter @dyvin-ai/backend lint
+      - name: Type Check
+        run: pnpm --filter @dyvin-ai/backend typecheck
+
+      - name: Lint
+        run: pnpm --filter @dyvin-ai/backend lint
 
       - name: Run Tests
         run: pnpm --filter @dyvin-ai/backend test
         env:
-          DATABASE_URL: "postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public"
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'
 
       - name: Build Backend
         run: pnpm --filter @dyvin-ai/backend build

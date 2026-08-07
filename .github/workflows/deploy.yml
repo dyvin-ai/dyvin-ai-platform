@@ -2,14 +2,30 @@ name: Dyvin AI Enterprise CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, staging ]
+    branches: [main, staging]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint-test-build:
     name: Lint, Test & Build
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: dyvin
+          POSTGRES_PASSWORD: dyvin_secret_password
+          POSTGRES_DB: dyvin_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -19,21 +35,29 @@ jobs:
           node-version: 20
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 8
+        uses: pnpm/action-setup@v4
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma Client
-        run: pnpm --filter @dyvin-ai/backend prisma:generate
+        run: pnpm --filter @dyvin-ai/backend prisma generate
+        env:
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'
 
-      - name: Run Unit & Integration Tests
-        run: pnpm --filter @dyvin-ai/backend test
+      - name: Build Shared
+        run: pnpm --filter @dyvin-ai/shared build
 
-      - name: Build Production Bundle
-        run: pnpm --filter @dyvin-ai/backend build
+      - name: Lint All
+        run: pnpm lint
+
+      - name: Run Tests
+        run: pnpm test
+        env:
+          DATABASE_URL: 'postgresql://dyvin:dyvin_secret_password@localhost:5432/dyvin_db?schema=public'
+
+      - name: Build All
+        run: pnpm --filter @dyvin-ai/backend build && pnpm --filter @dyvin-ai/frontend build
 
   docker-build-push:
     name: Docker Build & Push ECR

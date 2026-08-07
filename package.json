@@ -8,9 +8,10 @@
     "dev:frontend": "pnpm --filter @dyvin-ai/frontend dev",
     "build:backend": "pnpm --filter @dyvin-ai/backend build",
     "build:frontend": "pnpm --filter @dyvin-ai/frontend build",
-    "build": "pnpm --filter @dyvin-ai/backend build",
-    "test:backend": "pnpm --filter @dyvin-ai/backend test",
+    "build": "pnpm --filter @dyvin-ai/shared build && pnpm --filter @dyvin-ai/backend build && pnpm --filter @dyvin-ai/frontend build",
+    "lint": "pnpm --filter @dyvin-ai/backend lint && pnpm --filter @dyvin-ai/frontend lint",
     "test": "pnpm --filter @dyvin-ai/backend test",
+    "test:backend": "pnpm --filter @dyvin-ai/backend test",
     "prisma:generate": "pnpm --filter @dyvin-ai/backend prisma:generate"
   },
   "devDependencies": {
