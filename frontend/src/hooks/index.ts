@@ -15,3 +15,4 @@ export * from './useRecommendationIntelligence';
 export * from './useRecommendationPlatform';
 export * from './useUnderstandingPlatform';
 export * from './useConsistencyPlatform';
+export * from './useAttributionPlatform';
