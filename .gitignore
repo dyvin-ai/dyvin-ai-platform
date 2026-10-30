@@ -97,7 +97,9 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public (commented out to allow Vite/React frontend static assets)
+!frontend/public/
+!frontend/analytics/public/
 
 # vuepress build output
 .vuepress/dist

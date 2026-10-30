@@ -49,7 +49,7 @@ dyvin-ai/
 - **Framework**: React 18 with TypeScript & Vite
 - **Styling**: Tailwind CSS & Framer Motion
 - **State Management**: Zustand & React Query (TanStack Query)
-- **Routing & Guards**: React Router with hierarchical RBAC guards
+- **Routing & Architecture**: TanStack Router (`@tanstack/react-router`) & TanStack Start for analytics portal with RBAC guards
 
 ---
 
