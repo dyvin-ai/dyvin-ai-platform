@@ -50,6 +50,7 @@ describe('WebhookProcessorService', () => {
       },
       payment: {
         create: jest.fn().mockResolvedValue({ id: 'pmt-1' }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
@@ -59,6 +60,10 @@ describe('WebhookProcessorService', () => {
 
     quotaEnforcementMock = {
       addCredits: jest.fn().mockResolvedValue(undefined),
+      grantCredits: jest.fn().mockResolvedValue({
+        alreadyGranted: false,
+        creditBalance: { id: 'cb-1', balance: 100 },
+      }),
     };
 
     mockProvider = {
@@ -200,8 +205,12 @@ describe('WebhookProcessorService', () => {
       });
 
       expect(res.success).toBe(true);
-      expect(quotaEnforcementMock.addCredits).toHaveBeenCalledWith('org-1', UsageMetricType.SCANS, 100);
-      expect(quotaEnforcementMock.addCredits).toHaveBeenCalledWith('org-1', UsageMetricType.AI_REQUESTS, 100);
+      expect(quotaEnforcementMock.grantCredits).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 'org-1',
+          credits: 100,
+        }),
+      );
       expect(prismaMock.payment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -352,7 +361,12 @@ describe('WebhookProcessorService', () => {
       });
 
       expect(res.success).toBe(true);
-      expect(quotaEnforcementMock.addCredits).toHaveBeenCalledWith('org-1', UsageMetricType.SCANS, 50);
+      expect(quotaEnforcementMock.grantCredits).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: 'org-1',
+          credits: 50,
+        }),
+      );
       expect(prismaMock.payment.create).toHaveBeenCalled();
     });
 
@@ -416,5 +430,85 @@ describe('WebhookProcessorService', () => {
         data: expect.objectContaining({ status: WebhookEventStatus.FAILED }),
       }),
     );
+  });
+
+  describe('P1 Review Findings Enforcements', () => {
+    it('should reject MOCK webhooks when NODE_ENV is production', async () => {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        await expect(
+          service.processWebhook({
+            providerCode: PaymentProviderCode.MOCK,
+            signature: 'sig',
+            body: { id: 'evt_prod_mock', type: 'invoice.paid' },
+          }),
+        ).rejects.toThrow(BadRequestException);
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
+    });
+
+    it('should reject Stripe checkout.session.completed without organizationId', async () => {
+      await expect(
+        service.processWebhook({
+          providerCode: PaymentProviderCode.STRIPE,
+          signature: 'sig',
+          body: {
+            id: 'evt_missing_org',
+            type: 'checkout.session.completed',
+            data: {
+              object: {
+                mode: 'subscription',
+                metadata: { planCode: PlanTier.STARTER },
+              },
+            },
+          },
+        }),
+      ).rejects.toThrow('Missing organizationId in Stripe checkout session metadata.');
+    });
+
+    it('should reject unhandled webhook event type', async () => {
+      await expect(
+        service.processWebhook({
+          providerCode: PaymentProviderCode.STRIPE,
+          signature: 'sig',
+          body: {
+            id: 'evt_unknown',
+            type: 'customer.source.created',
+            data: { object: {} },
+          },
+        }),
+      ).rejects.toThrow('Unhandled Stripe webhook event type: customer.source.created');
+    });
+
+    it('should prevent duplicate Payment creation when externalTxId already recorded', async () => {
+      prismaMock.payment.findFirst.mockResolvedValueOnce({ id: 'pmt-already-exists' });
+
+      await service.processWebhook({
+        providerCode: PaymentProviderCode.STRIPE,
+        signature: 'valid_sig',
+        body: {
+          id: 'evt_stripe_sub_dup',
+          type: 'checkout.session.completed',
+          data: {
+            object: {
+              mode: 'subscription',
+              subscription: 'sub_ext_123',
+              payment_intent: 'pi_dup_123',
+              currency: 'usd',
+              metadata: {
+                organizationId: 'org-1',
+                planCode: PlanTier.STARTER,
+              },
+            },
+          },
+        },
+      });
+
+      // payment.create should NOT have been called because findFirst returned an existing payment
+      expect(prismaMock.payment.create).not.toHaveBeenCalled();
+    });
   });
 });

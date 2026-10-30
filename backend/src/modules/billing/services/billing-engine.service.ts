@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { BillingInterval, PaymentProviderCode, PlanTier, UsageMetricType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { PaymentProviderRouter } from '../providers/payment-provider-router.service';
+import { RazorpayPaymentProvider } from '../providers/razorpay-payment.provider';
+import { StripePaymentProvider } from '../providers/stripe-payment.provider';
 import { InvoiceService } from './invoice.service';
 import { QuotaEnforcementService } from './quota-enforcement.service';
 import { SubscriptionService } from './subscription.service';
@@ -67,6 +69,10 @@ export class BillingEngineService {
     }
 
     const providerCode = input.providerCode || PaymentProviderCode.STRIPE;
+    if (providerCode === PaymentProviderCode.MOCK && process.env['NODE_ENV'] === 'production') {
+      throw new BadRequestException('Mock payment provider is disabled in production.');
+    }
+
     const provider = this.providerRouter.getProvider(providerCode);
 
     if (!provider.createCheckoutSession) {
@@ -137,27 +143,74 @@ export class BillingEngineService {
   }
 
   async verifyPayment(organizationId: string, userId: string, input: VerifyPaymentInput) {
-    const provider = this.providerRouter.getProvider(input.providerCode);
+    if (input.providerCode === PaymentProviderCode.MOCK) {
+      if (process.env['NODE_ENV'] === 'production') {
+        throw new BadRequestException('Mock payment verification is forbidden in production.');
+      }
+      return {
+        verified: true,
+        providerCode: PaymentProviderCode.MOCK,
+        status: 'mock_verified',
+        message: 'Mock payment verified. Authoritative activation will occur via webhook.',
+      };
+    }
 
-    if (provider.verifyPaymentSignature) {
-      const isValid = provider.verifyPaymentSignature({
+    if (input.providerCode === PaymentProviderCode.STRIPE) {
+      const stripeProvider = this.providerRouter.getProvider(PaymentProviderCode.STRIPE) as StripePaymentProvider;
+      const sessionResult = await stripeProvider.verifySession(input.orderId || input.paymentId);
+
+      if (!sessionResult.valid) {
+        throw new BadRequestException(
+          `Stripe payment verification failed: session status is ${sessionResult.paymentStatus || sessionResult.status}.`,
+        );
+      }
+
+      if (sessionResult.organizationId && sessionResult.organizationId !== organizationId) {
+        throw new ForbiddenException('Stripe checkout session does not belong to the active organization.');
+      }
+
+      return {
+        verified: true,
+        providerCode: PaymentProviderCode.STRIPE,
+        status: sessionResult.paymentStatus,
+        sessionId: sessionResult.sessionId,
+        amount: sessionResult.amount,
+        currency: sessionResult.currency,
+        message: 'Payment verified with Stripe API. Authoritative subscription or credit update will occur via webhook.',
+      };
+    }
+
+    if (input.providerCode === PaymentProviderCode.RAZORPAY) {
+      const rzpProvider = this.providerRouter.getProvider(PaymentProviderCode.RAZORPAY) as RazorpayPaymentProvider;
+      const result = await rzpProvider.verifyPaymentWithProvider({
         orderId: input.orderId,
         paymentId: input.paymentId,
         signature: input.signature,
       });
 
-      if (!isValid) {
-        throw new BadRequestException('Payment verification failed. Invalid provider signature.');
+      if (!result.valid) {
+        throw new BadRequestException(
+          'Razorpay payment verification failed: invalid signature, mismatched order, or incomplete capture status.',
+        );
       }
+
+      if (result.organizationId && result.organizationId !== organizationId) {
+        throw new ForbiddenException('Razorpay payment does not belong to the active organization.');
+      }
+
+      return {
+        verified: true,
+        providerCode: PaymentProviderCode.RAZORPAY,
+        status: result.status,
+        orderId: result.orderId,
+        paymentId: result.paymentId,
+        amount: result.amount,
+        currency: result.currency,
+        message: 'Payment verified with Razorpay API. Authoritative subscription or credit update will occur via webhook.',
+      };
     }
 
-    this.logger.log(`Payment [${input.paymentId}] verified for org [${organizationId}] by user [${userId}]`);
-    return {
-      verified: true,
-      providerCode: input.providerCode,
-      orderId: input.orderId,
-      paymentId: input.paymentId,
-    };
+    throw new BadRequestException(`Unsupported payment provider [${input.providerCode}]`);
   }
 
   getUsage(organizationId: string) {

@@ -84,36 +84,42 @@ export class ScanService {
       throw new BadRequestException(websiteSafety.reason || 'Unsafe website URL rejected.');
     }
 
-    // Enforce and deduct scan quota atomically before accepting billable scan work
-    await this.quotaEnforcement.recordUsage(organizationId, UsageMetricType.SCANS, 1);
-
-    const scan = await this.prisma.scan.create({
-      data: {
-        projectId,
-        websiteId: targetWebsite.id,
-        status: 'QUEUED',
-        createdBy: userId,
-      },
-    });
-
-    // Enqueue website crawl background job
-    await this.crawlerService.enqueueWebsiteCrawl({
-      scanId: scan.id,
-      projectId,
-      websiteId: targetWebsite.id,
-      url: targetWebsite.url,
-    });
-
-    await this.auditService.logAction({
-      userId,
+    // Execute scan creation and crawler queueing inside transactional quota reservation.
+    // If database creation or queueing throws an error, the reserved quota is automatically released.
+    return this.quotaEnforcement.executeWithQuotaReservation(
       organizationId,
-      action: 'SCAN_STARTED',
-      ipAddress,
-      userAgent,
-      metadata: { scanId: scan.id, projectId, websiteUrl: targetWebsite.url },
-    });
+      UsageMetricType.SCANS,
+      1,
+      async () => {
+        const scan = await this.prisma.scan.create({
+          data: {
+            projectId,
+            websiteId: targetWebsite.id,
+            status: 'QUEUED',
+            createdBy: userId,
+          },
+        });
 
-    return scan;
+        // Enqueue website crawl background job
+        await this.crawlerService.enqueueWebsiteCrawl({
+          scanId: scan.id,
+          projectId,
+          websiteId: targetWebsite.id,
+          url: targetWebsite.url,
+        });
+
+        await this.auditService.logAction({
+          userId,
+          organizationId,
+          action: 'SCAN_STARTED',
+          ipAddress,
+          userAgent,
+          metadata: { scanId: scan.id, projectId, websiteUrl: targetWebsite.url },
+        });
+
+        return scan;
+      },
+    );
   }
 
   async getOrganizationScans(organizationId: string, projectId?: string) {

@@ -15,7 +15,23 @@ describe('VisibilityScoreService', () => {
         {
           provide: PrismaService,
           useValue: {
+            organization: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'org-101' }),
+            },
             aIVisibilityProfile: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockResolvedValue({
+                id: 'org-101',
+                organizationId: 'org-101',
+                overallScore: 82.5,
+                status: VisibilityStatus.HEALTHY,
+              }),
+              update: jest.fn().mockResolvedValue({
+                id: 'org-101',
+                organizationId: 'org-101',
+                overallScore: 82.5,
+                status: VisibilityStatus.HEALTHY,
+              }),
               upsert: jest.fn().mockResolvedValue({
                 id: 'org-101',
                 organizationId: 'org-101',

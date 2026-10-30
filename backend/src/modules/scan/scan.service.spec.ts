@@ -60,6 +60,10 @@ describe('ScanService', () => {
           provide: QuotaEnforcementService,
           useValue: {
             recordUsage: jest.fn().mockResolvedValue({ success: true, metricType: UsageMetricType.SCANS, quantity: 1 }),
+            executeWithQuotaReservation: jest.fn().mockImplementation((orgId, metric, qty, action) => action()),
+            reserveQuota: jest.fn().mockResolvedValue({ organizationId: 'org-1', metricType: UsageMetricType.SCANS, quantity: 1 }),
+            releaseQuota: jest.fn().mockResolvedValue(undefined),
+            commitQuotaUsage: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -90,7 +94,12 @@ describe('ScanService', () => {
 
       const res = await service.initiateProjectScan('proj-1', 'org-1', 'user-1');
       expect(res.id).toBe('scan-1');
-      expect(quotaEnforcement.recordUsage).toHaveBeenCalledWith('org-1', UsageMetricType.SCANS, 1);
+      expect(quotaEnforcement.executeWithQuotaReservation).toHaveBeenCalledWith(
+        'org-1',
+        UsageMetricType.SCANS,
+        1,
+        expect.any(Function),
+      );
       expect(prisma.scan.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ projectId: 'proj-1', websiteId: 'web-1', status: 'QUEUED' }),
@@ -104,7 +113,7 @@ describe('ScanService', () => {
         organizationId: 'org-1',
         websites: [{ id: 'web-1', url: 'https://example.com', domain: 'example.com', isPrimary: true }],
       });
-      (quotaEnforcement.recordUsage as jest.Mock).mockRejectedValue(
+      (quotaEnforcement.executeWithQuotaReservation as jest.Mock).mockRejectedValueOnce(
         new BadRequestException('Monthly limit exceeded for metric [SCANS]. Current usage: 10/10'),
       );
 
@@ -113,6 +122,30 @@ describe('ScanService', () => {
       );
 
       expect(prisma.scan.create).not.toHaveBeenCalled();
+    });
+
+    it('should release quota reservation if scan creation or queuing fails', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'proj-1',
+        organizationId: 'org-1',
+        websites: [{ id: 'web-1', url: 'https://example.com', domain: 'example.com', isPrimary: true }],
+      });
+      (prisma.scan.create as jest.Mock).mockRejectedValueOnce(new Error('DB failure'));
+
+      const releaseSpy = jest.fn();
+      (quotaEnforcement.executeWithQuotaReservation as jest.Mock).mockImplementationOnce(
+        async (orgId, metric, qty, action) => {
+          try {
+            return await action();
+          } catch (e) {
+            releaseSpy(orgId, metric, qty);
+            throw e;
+          }
+        },
+      );
+
+      await expect(service.initiateProjectScan('proj-1', 'org-1', 'user-1')).rejects.toThrow('DB failure');
+      expect(releaseSpy).toHaveBeenCalledWith('org-1', UsageMetricType.SCANS, 1);
     });
 
     it('should handle custom URL input cleanly', async () => {
@@ -143,7 +176,12 @@ describe('ScanService', () => {
       );
       expect(res.id).toBe('scan-custom');
       expect(prisma.website.create).toHaveBeenCalled();
-      expect(quotaEnforcement.recordUsage).toHaveBeenCalledWith('org-1', UsageMetricType.SCANS, 1);
+      expect(quotaEnforcement.executeWithQuotaReservation).toHaveBeenCalledWith(
+        'org-1',
+        UsageMetricType.SCANS,
+        1,
+        expect.any(Function),
+      );
     });
   });
 

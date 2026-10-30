@@ -55,6 +55,20 @@ describe('BillingEngineService', () => {
         currency: 'USD',
       }),
       verifyPaymentSignature: jest.fn().mockReturnValue(true),
+      verifyPaymentWithProvider: jest.fn().mockResolvedValue({
+        valid: true,
+        verified: true,
+        paymentId: 'pay_123',
+        orderId: 'order_123',
+        status: 'captured',
+        organizationId: 'org-1',
+      }),
+      verifySession: jest.fn().mockResolvedValue({
+        verified: true,
+        sessionId: 'cs_123',
+        status: 'paid',
+        organizationId: 'org-1',
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -183,7 +197,9 @@ describe('BillingEngineService', () => {
     });
 
     it('should throw BadRequestException when signature is invalid', async () => {
-      mockProvider.verifyPaymentSignature.mockReturnValue(false);
+      mockProvider.verifyPaymentWithProvider.mockRejectedValue(
+        new BadRequestException('Invalid Razorpay signature or payment not captured.'),
+      );
 
       await expect(
         service.verifyPayment('org-1', 'user-1', {

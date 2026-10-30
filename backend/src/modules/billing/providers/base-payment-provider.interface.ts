@@ -45,6 +45,7 @@ export interface CheckoutSessionOutput {
   providerCode: PaymentProviderCode;
   url?: string | null;
   orderId?: string;
+  subscriptionId?: string;
   amount?: number;
   currency?: string;
   keyId?: string;

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PaymentProviderCode } from '@prisma/client';
 import {
   BasePaymentProvider,
@@ -16,7 +16,14 @@ export class MockPaymentProvider implements BasePaymentProvider {
   readonly providerCode = PaymentProviderCode.MOCK;
   private readonly logger = new Logger(MockPaymentProvider.name);
 
+  private assertNotProduction(): void {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new BadRequestException('Mock payment provider is strictly disabled in production mode.');
+    }
+  }
+
   async createCustomer(input: CreateCustomerInput): Promise<CustomerOutput> {
+    this.assertNotProduction();
     this.logger.log(`[MockPayment] Creating customer for org [${input.organizationId}]`);
     return {
       providerCustomerId: `cus_mock_${input.organizationId.substring(0, 8)}`,
@@ -25,6 +32,7 @@ export class MockPaymentProvider implements BasePaymentProvider {
   }
 
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSessionOutput> {
+    this.assertNotProduction();
     this.logger.log(`[MockPayment] Creating checkout session for org [${input.organizationId}], mode: [${input.mode}]`);
     const id = `mock_session_${Date.now()}`;
     return {
@@ -37,10 +45,12 @@ export class MockPaymentProvider implements BasePaymentProvider {
   }
 
   verifyPaymentSignature(input: VerifyPaymentInput): boolean {
+    this.assertNotProduction();
     return true;
   }
 
   async createSubscription(input: CreateSubscriptionInput): Promise<SubscriptionOutput> {
+    this.assertNotProduction();
     this.logger.log(`[MockPayment] Creating subscription for customer [${input.providerCustomerId}] on plan [${input.planCode}]`);
     const now = new Date();
     const periodEnd = new Date();
@@ -55,11 +65,13 @@ export class MockPaymentProvider implements BasePaymentProvider {
   }
 
   async cancelSubscription(providerSubscriptionId: string): Promise<{ canceled: boolean }> {
+    this.assertNotProduction();
     this.logger.log(`[MockPayment] Canceling subscription [${providerSubscriptionId}]`);
     return { canceled: true };
   }
 
   async changePlan(providerSubscriptionId: string, newPlanCode: string): Promise<SubscriptionOutput> {
+    this.assertNotProduction();
     this.logger.log(`[MockPayment] Changing plan for sub [${providerSubscriptionId}] to [${newPlanCode}]`);
     const now = new Date();
     const periodEnd = new Date();
@@ -74,6 +86,7 @@ export class MockPaymentProvider implements BasePaymentProvider {
   }
 
   verifyWebhookSignature(rawBody: string | Buffer, signature: string): boolean {
+    this.assertNotProduction();
     return true;
   }
 }

@@ -171,6 +171,42 @@ export class StripePaymentProvider implements BasePaymentProvider {
     }
   }
 
+  async verifySession(sessionId: string): Promise<{
+    valid: boolean;
+    sessionId: string;
+    paymentStatus: string;
+    status: string;
+    organizationId?: string;
+    amount?: number;
+    currency?: string;
+  }> {
+    const stripe = this.getStripeClient();
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const organizationId = session.metadata?.['organizationId'];
+      const paymentStatus = session.payment_status;
+      const isPaid = paymentStatus === 'paid' || session.status === 'complete';
+
+      return {
+        valid: isPaid,
+        sessionId: session.id,
+        paymentStatus,
+        status: session.status || 'unknown',
+        organizationId,
+        amount: session.amount_total ? session.amount_total / 100 : undefined,
+        currency: session.currency ? session.currency.toUpperCase() : 'USD',
+      };
+    } catch (err: any) {
+      this.logger.error(`[Stripe] Failed to retrieve checkout session [${sessionId}]: ${err.message}`, err.stack);
+      return {
+        valid: false,
+        sessionId,
+        paymentStatus: 'failed',
+        status: 'error',
+      };
+    }
+  }
+
   private getPriceId(planCode: string, interval?: 'MONTHLY' | 'YEARLY'): string {
     const intervalSuffix = interval ? `_${interval.toUpperCase()}` : '';
     const specificKey = `STRIPE_PRICE_${planCode.toUpperCase()}${intervalSuffix}`;

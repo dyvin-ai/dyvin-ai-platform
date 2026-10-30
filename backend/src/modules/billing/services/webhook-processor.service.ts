@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   BillingInterval,
   PaymentProviderCode,
@@ -32,6 +32,10 @@ export class WebhookProcessorService {
   ) {}
 
   async processWebhook(input: ProcessWebhookInput) {
+    if (input.providerCode === PaymentProviderCode.MOCK && process.env.NODE_ENV === 'production') {
+      throw new BadRequestException('MOCK payment provider is not allowed in production.');
+    }
+
     const provider = this.providerRouter.getProvider(input.providerCode);
 
     // For non-Mock providers, a missing signature must be rejected before any processing.
@@ -79,6 +83,10 @@ export class WebhookProcessorService {
         await this.handleStripeEvent(eventType, input.body);
       } else if (input.providerCode === PaymentProviderCode.RAZORPAY) {
         await this.handleRazorpayEvent(eventType, input.body);
+      } else if (input.providerCode === PaymentProviderCode.MOCK) {
+        await this.handleMockEvent(eventType, input.body);
+      } else {
+        throw new BadRequestException(`Unsupported provider code: [${input.providerCode}]`);
       }
 
       await this.prisma.webhookEvent.update({
@@ -104,6 +112,51 @@ export class WebhookProcessorService {
     }
   }
 
+  private async handleMockEvent(eventType: string, body: any): Promise<void> {
+    if (process.env.NODE_ENV === 'production') {
+      throw new BadRequestException('MOCK payment provider is not allowed in production.');
+    }
+
+    const organizationId = body.organizationId || body.metadata?.organizationId;
+    if (!organizationId) {
+      // In non-production testing/development, generic mock events without organization are accepted
+      return;
+    }
+
+    if (eventType === 'checkout.session.completed' || eventType === 'payment.succeeded') {
+      if (body.planCode) {
+        await this.activateSubscriptionFromProvider({
+          organizationId,
+          planCode: body.planCode as PlanTier,
+          interval: (body.interval as BillingInterval) || BillingInterval.MONTHLY,
+          externalSubId: body.subscriptionId || `mock_sub_${Date.now()}`,
+          amount: body.amount ?? 0,
+          currency: body.currency || 'USD',
+          paymentIntentId: body.paymentIntentId || `mock_pi_${Date.now()}`,
+          providerCode: PaymentProviderCode.MOCK,
+        });
+      } else if (body.credits) {
+        const credits = parseInt(body.credits, 10);
+        const txId = body.id || `mock_tx_${Date.now()}`;
+        await this.quotaEnforcement.grantCredits({
+          organizationId,
+          credits,
+          providerTxId: txId,
+          description: `Mock credit top-up: ${txId}`,
+        });
+        await this.recordTopUpPayment({
+          organizationId,
+          amount: body.amount ?? 0,
+          currency: body.currency || 'USD',
+          externalTxId: txId,
+          providerCode: PaymentProviderCode.MOCK,
+        });
+      }
+    } else {
+      throw new BadRequestException(`Unhandled Mock webhook event type: ${eventType}`);
+    }
+  }
+
   private async handleStripeEvent(eventType: string, body: any): Promise<void> {
     const dataObj = body.data?.object || body;
 
@@ -115,37 +168,47 @@ export class WebhookProcessorService {
         const mode = dataObj.mode;
 
         if (!organizationId) {
-          this.logger.warn('[StripeWebhook] checkout.session.completed missing organizationId in metadata.');
-          return;
+          throw new BadRequestException('Missing organizationId in Stripe checkout session metadata.');
         }
 
         if (mode === 'subscription' || purpose === 'subscription') {
           const planCode = metadata.planCode as PlanTier;
-          if (planCode) {
-            await this.activateSubscriptionFromProvider({
-              organizationId,
-              planCode,
-              interval: (metadata.interval as BillingInterval) || BillingInterval.MONTHLY,
-              externalSubId: dataObj.subscription,
-              amount: dataObj.amount_total ? dataObj.amount_total / 100 : undefined,
-              currency: dataObj.currency ? dataObj.currency.toUpperCase() : 'USD',
-              paymentIntentId: dataObj.payment_intent || dataObj.id,
-              providerCode: PaymentProviderCode.STRIPE,
-            });
+          if (!planCode) {
+            throw new BadRequestException('Missing planCode in Stripe subscription checkout session metadata.');
           }
+          await this.activateSubscriptionFromProvider({
+            organizationId,
+            planCode,
+            interval: (metadata.interval as BillingInterval) || BillingInterval.MONTHLY,
+            externalSubId: dataObj.subscription,
+            amount: dataObj.amount_total ? dataObj.amount_total / 100 : undefined,
+            currency: dataObj.currency ? dataObj.currency.toUpperCase() : 'USD',
+            paymentIntentId: dataObj.payment_intent || dataObj.id,
+            providerCode: PaymentProviderCode.STRIPE,
+          });
         } else if (mode === 'payment' || purpose === 'top_up') {
           const credits = parseInt(metadata.credits || '0', 10);
-          if (credits > 0) {
-            await this.quotaEnforcement.addCredits(organizationId, UsageMetricType.SCANS, credits);
-            await this.quotaEnforcement.addCredits(organizationId, UsageMetricType.AI_REQUESTS, credits);
+          if (credits <= 0) {
+            throw new BadRequestException('Invalid credits amount in Stripe top-up checkout session metadata.');
           }
+          const providerTxId = dataObj.payment_intent || dataObj.id;
+          await this.quotaEnforcement.grantCredits({
+            organizationId,
+            credits,
+            providerTxId,
+            description: `Stripe credit top-up: ${providerTxId}`,
+          });
           await this.recordTopUpPayment({
             organizationId,
             amount: dataObj.amount_total ? dataObj.amount_total / 100 : 0,
             currency: (dataObj.currency || 'USD').toUpperCase(),
-            externalTxId: dataObj.payment_intent || dataObj.id,
+            externalTxId: providerTxId,
             providerCode: PaymentProviderCode.STRIPE,
           });
+        } else {
+          throw new BadRequestException(
+            `Unhandled Stripe checkout session mode/purpose: mode=${mode}, purpose=${purpose}`,
+          );
         }
         break;
       }
@@ -153,6 +216,9 @@ export class WebhookProcessorService {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const subId = dataObj.id;
+        if (!subId) {
+          throw new BadRequestException('Missing subscription id in Stripe customer.subscription event.');
+        }
         const status = dataObj.status;
         const mappedStatus = this.mapStripeSubscriptionStatus(status);
 
@@ -160,99 +226,133 @@ export class WebhookProcessorService {
           where: { externalSubId: subId },
         });
 
-        if (sub) {
-          await this.prisma.organizationSubscription.update({
-            where: { id: sub.id },
-            data: {
-              status: mappedStatus,
-              currentPeriodStart: dataObj.current_period_start
-                ? new Date(dataObj.current_period_start * 1000)
-                : undefined,
-              currentPeriodEnd: dataObj.current_period_end
-                ? new Date(dataObj.current_period_end * 1000)
-                : undefined,
-              cancelAtPeriodEnd: dataObj.cancel_at_period_end ?? false,
-            },
-          });
+        if (!sub) {
+          throw new NotFoundException(`Subscription not found for externalSubId: ${subId}`);
         }
+
+        await this.prisma.organizationSubscription.update({
+          where: { id: sub.id },
+          data: {
+            status: mappedStatus,
+            currentPeriodStart: dataObj.current_period_start
+              ? new Date(dataObj.current_period_start * 1000)
+              : undefined,
+            currentPeriodEnd: dataObj.current_period_end
+              ? new Date(dataObj.current_period_end * 1000)
+              : undefined,
+            cancelAtPeriodEnd: dataObj.cancel_at_period_end ?? false,
+          },
+        });
         break;
       }
 
       case 'customer.subscription.deleted': {
         const subId = dataObj.id;
+        if (!subId) {
+          throw new BadRequestException('Missing subscription id in Stripe customer.subscription.deleted event.');
+        }
         const sub = await this.prisma.organizationSubscription.findFirst({
           where: { externalSubId: subId },
         });
 
-        if (sub) {
-          await this.prisma.organizationSubscription.update({
-            where: { id: sub.id },
-            data: {
-              status: SubscriptionStatus.CANCELED,
-              canceledAt: new Date(),
-            },
-          });
+        if (!sub) {
+          throw new NotFoundException(`Subscription not found for externalSubId: ${subId}`);
         }
+
+        await this.prisma.organizationSubscription.update({
+          where: { id: sub.id },
+          data: {
+            status: SubscriptionStatus.CANCELED,
+            canceledAt: new Date(),
+          },
+        });
         break;
       }
 
       case 'invoice.payment_succeeded': {
         const subId = dataObj.subscription;
-        if (subId) {
-          const sub = await this.prisma.organizationSubscription.findFirst({
-            where: { externalSubId: subId },
+        if (!subId) {
+          throw new BadRequestException('Missing subscription ID on invoice.payment_succeeded event.');
+        }
+        const sub = await this.prisma.organizationSubscription.findFirst({
+          where: { externalSubId: subId },
+        });
+
+        if (!sub) {
+          throw new NotFoundException(`Subscription not found for invoice subscription ID: ${subId}`);
+        }
+
+        await this.prisma.organizationSubscription.update({
+          where: { id: sub.id },
+          data: { status: SubscriptionStatus.ACTIVE },
+        });
+
+        const externalTxId = dataObj.payment_intent || dataObj.id;
+        const existingPayment = externalTxId
+          ? await this.prisma.payment.findFirst({
+              where: { externalTxId, providerCode: PaymentProviderCode.STRIPE },
+            })
+          : null;
+
+        if (!existingPayment) {
+          await this.prisma.payment.create({
+            data: {
+              subscriptionId: sub.id,
+              amount: dataObj.amount_paid ? dataObj.amount_paid / 100 : 0,
+              currency: (dataObj.currency || 'USD').toUpperCase(),
+              status: PaymentStatus.SUCCEEDED,
+              providerCode: PaymentProviderCode.STRIPE,
+              externalTxId,
+              paidAt: new Date(),
+            },
           });
-
-          if (sub) {
-            await this.prisma.organizationSubscription.update({
-              where: { id: sub.id },
-              data: { status: SubscriptionStatus.ACTIVE },
-            });
-
-            await this.prisma.payment.create({
-              data: {
-                subscriptionId: sub.id,
-                amount: dataObj.amount_paid ? dataObj.amount_paid / 100 : 0,
-                currency: (dataObj.currency || 'USD').toUpperCase(),
-                status: PaymentStatus.SUCCEEDED,
-                providerCode: PaymentProviderCode.STRIPE,
-                externalTxId: dataObj.payment_intent || dataObj.id,
-                paidAt: new Date(),
-              },
-            });
-          }
         }
         break;
       }
 
       case 'invoice.payment_failed': {
         const subId = dataObj.subscription;
-        if (subId) {
-          const sub = await this.prisma.organizationSubscription.findFirst({
-            where: { externalSubId: subId },
+        if (!subId) {
+          throw new BadRequestException('Missing subscription ID on invoice.payment_failed event.');
+        }
+        const sub = await this.prisma.organizationSubscription.findFirst({
+          where: { externalSubId: subId },
+        });
+
+        if (!sub) {
+          throw new NotFoundException(`Subscription not found for invoice subscription ID: ${subId}`);
+        }
+
+        await this.prisma.organizationSubscription.update({
+          where: { id: sub.id },
+          data: { status: SubscriptionStatus.PAST_DUE },
+        });
+
+        const externalTxId = dataObj.payment_intent || dataObj.id;
+        const existingPayment = externalTxId
+          ? await this.prisma.payment.findFirst({
+              where: { externalTxId, providerCode: PaymentProviderCode.STRIPE },
+            })
+          : null;
+
+        if (!existingPayment) {
+          await this.prisma.payment.create({
+            data: {
+              subscriptionId: sub.id,
+              amount: dataObj.amount_due ? dataObj.amount_due / 100 : 0,
+              currency: (dataObj.currency || 'USD').toUpperCase(),
+              status: PaymentStatus.FAILED,
+              failureReason: dataObj.last_payment_error?.message || 'Invoice payment failed',
+              providerCode: PaymentProviderCode.STRIPE,
+              externalTxId,
+            },
           });
-
-          if (sub) {
-            await this.prisma.organizationSubscription.update({
-              where: { id: sub.id },
-              data: { status: SubscriptionStatus.PAST_DUE },
-            });
-
-            await this.prisma.payment.create({
-              data: {
-                subscriptionId: sub.id,
-                amount: dataObj.amount_due ? dataObj.amount_due / 100 : 0,
-                currency: (dataObj.currency || 'USD').toUpperCase(),
-                status: PaymentStatus.FAILED,
-                failureReason: dataObj.last_payment_error?.message || 'Invoice payment failed',
-                providerCode: PaymentProviderCode.STRIPE,
-                externalTxId: dataObj.payment_intent || dataObj.id,
-              },
-            });
-          }
         }
         break;
       }
+
+      default:
+        throw new BadRequestException(`Unhandled Stripe webhook event type: ${eventType}`);
     }
   }
 
@@ -263,26 +363,76 @@ export class WebhookProcessorService {
     const notes = paymentEntity?.notes || orderEntity?.notes || subEntity?.notes || {};
     const organizationId = notes.organizationId;
 
-    switch (eventType) {
-      case 'order.paid':
-      case 'payment.captured': {
-        if (!organizationId) {
-          this.logger.warn(`[RazorpayWebhook] ${eventType} missing organizationId in notes.`);
-          return;
-        }
+    if (!organizationId) {
+      throw new BadRequestException(`Missing organizationId in Razorpay webhook notes for event [${eventType}].`);
+    }
 
+    switch (eventType) {
+      case 'order.paid': {
         const purpose = notes.purpose;
         if (purpose === 'top_up') {
           const credits = parseInt(notes.credits || '0', 10);
-          if (credits > 0) {
-            await this.quotaEnforcement.addCredits(organizationId, UsageMetricType.SCANS, credits);
-            await this.quotaEnforcement.addCredits(organizationId, UsageMetricType.AI_REQUESTS, credits);
+          if (credits <= 0) {
+            throw new BadRequestException('Invalid credits in Razorpay order notes.');
           }
+          const providerTxId = paymentEntity?.id || orderEntity?.id;
+          await this.quotaEnforcement.grantCredits({
+            organizationId,
+            credits,
+            providerTxId,
+            description: `Razorpay credit top-up: ${providerTxId}`,
+          });
+          await this.recordTopUpPayment({
+            organizationId,
+            amount: paymentEntity?.amount
+              ? Number(paymentEntity.amount) / 100
+              : orderEntity?.amount
+              ? Number(orderEntity.amount) / 100
+              : 0,
+            currency: (paymentEntity?.currency || orderEntity?.currency || 'INR').toUpperCase(),
+            externalTxId: providerTxId,
+            providerCode: PaymentProviderCode.RAZORPAY,
+          });
+        } else if (purpose === 'subscription' && notes.planCode) {
+          await this.activateSubscriptionFromProvider({
+            organizationId,
+            planCode: notes.planCode as PlanTier,
+            interval: (notes.interval as BillingInterval) || BillingInterval.MONTHLY,
+            externalSubId: subEntity?.id || orderEntity?.id,
+            amount: paymentEntity?.amount
+              ? Number(paymentEntity.amount) / 100
+              : orderEntity?.amount
+              ? Number(orderEntity.amount) / 100
+              : undefined,
+            currency: (paymentEntity?.currency || orderEntity?.currency || 'INR').toUpperCase(),
+            paymentIntentId: paymentEntity?.id,
+            providerCode: PaymentProviderCode.RAZORPAY,
+          });
+        } else {
+          throw new BadRequestException(`Unhandled Razorpay order.paid purpose: ${purpose}`);
+        }
+        break;
+      }
+
+      case 'payment.captured': {
+        const purpose = notes.purpose;
+        if (purpose === 'top_up') {
+          const credits = parseInt(notes.credits || '0', 10);
+          if (credits <= 0) {
+            throw new BadRequestException('Invalid credits in Razorpay payment notes.');
+          }
+          const providerTxId = paymentEntity?.id || orderEntity?.id;
+          await this.quotaEnforcement.grantCredits({
+            organizationId,
+            credits,
+            providerTxId,
+            description: `Razorpay credit top-up: ${providerTxId}`,
+          });
           await this.recordTopUpPayment({
             organizationId,
             amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : 0,
             currency: (paymentEntity?.currency || 'INR').toUpperCase(),
-            externalTxId: paymentEntity?.id || orderEntity?.id,
+            externalTxId: providerTxId,
             providerCode: PaymentProviderCode.RAZORPAY,
           });
         } else if (purpose === 'subscription' && notes.planCode) {
@@ -301,13 +451,20 @@ export class WebhookProcessorService {
       }
 
       case 'payment.failed': {
-        if (organizationId) {
-          const sub = await this.prisma.organizationSubscription.findFirst({
-            where: { organizationId },
-            orderBy: { createdAt: 'desc' },
-          });
+        const sub = await this.prisma.organizationSubscription.findFirst({
+          where: { organizationId },
+          orderBy: { createdAt: 'desc' },
+        });
 
-          if (sub) {
+        if (sub) {
+          const externalTxId = paymentEntity?.id;
+          const existingPayment = externalTxId
+            ? await this.prisma.payment.findFirst({
+                where: { externalTxId, providerCode: PaymentProviderCode.RAZORPAY },
+              })
+            : null;
+
+          if (!existingPayment) {
             await this.prisma.payment.create({
               data: {
                 subscriptionId: sub.id,
@@ -316,7 +473,7 @@ export class WebhookProcessorService {
                 status: PaymentStatus.FAILED,
                 failureReason: paymentEntity?.error_description || 'Payment failed',
                 providerCode: PaymentProviderCode.RAZORPAY,
-                externalTxId: paymentEntity?.id,
+                externalTxId,
               },
             });
           }
@@ -326,57 +483,93 @@ export class WebhookProcessorService {
 
       case 'subscription.activated':
       case 'subscription.charged': {
-        if (subEntity?.id) {
-          const sub = await this.prisma.organizationSubscription.findFirst({
-            where: { externalSubId: subEntity.id },
-          });
+        const subId = subEntity?.id;
+        if (!subId) {
+          throw new BadRequestException('Missing subscription ID in Razorpay subscription event.');
+        }
 
-          if (sub) {
-            await this.prisma.organizationSubscription.update({
-              where: { id: sub.id },
+        let sub = await this.prisma.organizationSubscription.findFirst({
+          where: { externalSubId: subId },
+        });
+
+        if (!sub && notes.planCode) {
+          await this.activateSubscriptionFromProvider({
+            organizationId,
+            planCode: notes.planCode as PlanTier,
+            interval: (notes.interval as BillingInterval) || BillingInterval.MONTHLY,
+            externalSubId: subId,
+            amount: paymentEntity?.amount ? Number(paymentEntity.amount) / 100 : undefined,
+            currency: (paymentEntity?.currency || 'INR').toUpperCase(),
+            paymentIntentId: paymentEntity?.id,
+            providerCode: PaymentProviderCode.RAZORPAY,
+          });
+          sub = await this.prisma.organizationSubscription.findFirst({
+            where: { externalSubId: subId },
+          });
+        } else if (!sub) {
+          throw new NotFoundException(`Subscription not found for Razorpay subscription ID: ${subId}`);
+        } else {
+          await this.prisma.organizationSubscription.update({
+            where: { id: sub.id },
+            data: {
+              status: SubscriptionStatus.ACTIVE,
+              currentPeriodStart: subEntity.current_start ? new Date(subEntity.current_start * 1000) : undefined,
+              currentPeriodEnd: subEntity.current_end ? new Date(subEntity.current_end * 1000) : undefined,
+            },
+          });
+        }
+
+        if (paymentEntity && sub) {
+          const externalTxId = paymentEntity.id;
+          const existingPayment = externalTxId
+            ? await this.prisma.payment.findFirst({
+                where: { externalTxId, providerCode: PaymentProviderCode.RAZORPAY },
+              })
+            : null;
+
+          if (!existingPayment) {
+            await this.prisma.payment.create({
               data: {
-                status: SubscriptionStatus.ACTIVE,
-                currentPeriodStart: subEntity.current_start ? new Date(subEntity.current_start * 1000) : undefined,
-                currentPeriodEnd: subEntity.current_end ? new Date(subEntity.current_end * 1000) : undefined,
+                subscriptionId: sub.id,
+                amount: paymentEntity.amount ? Number(paymentEntity.amount) / 100 : 0,
+                currency: (paymentEntity.currency || 'INR').toUpperCase(),
+                status: PaymentStatus.SUCCEEDED,
+                providerCode: PaymentProviderCode.RAZORPAY,
+                externalTxId,
+                paidAt: new Date(),
               },
             });
-
-            if (paymentEntity) {
-              await this.prisma.payment.create({
-                data: {
-                  subscriptionId: sub.id,
-                  amount: paymentEntity.amount ? Number(paymentEntity.amount) / 100 : 0,
-                  currency: (paymentEntity.currency || 'INR').toUpperCase(),
-                  status: PaymentStatus.SUCCEEDED,
-                  providerCode: PaymentProviderCode.RAZORPAY,
-                  externalTxId: paymentEntity.id,
-                  paidAt: new Date(),
-                },
-              });
-            }
           }
         }
         break;
       }
 
       case 'subscription.cancelled': {
-        if (subEntity?.id) {
-          const sub = await this.prisma.organizationSubscription.findFirst({
-            where: { externalSubId: subEntity.id },
-          });
-
-          if (sub) {
-            await this.prisma.organizationSubscription.update({
-              where: { id: sub.id },
-              data: {
-                status: SubscriptionStatus.CANCELED,
-                canceledAt: new Date(),
-              },
-            });
-          }
+        const subId = subEntity?.id;
+        if (!subId) {
+          throw new BadRequestException('Missing subscription ID in Razorpay subscription.cancelled event.');
         }
+
+        const sub = await this.prisma.organizationSubscription.findFirst({
+          where: { externalSubId: subId },
+        });
+
+        if (!sub) {
+          throw new NotFoundException(`Subscription not found for Razorpay subscription ID: ${subId}`);
+        }
+
+        await this.prisma.organizationSubscription.update({
+          where: { id: sub.id },
+          data: {
+            status: SubscriptionStatus.CANCELED,
+            canceledAt: new Date(),
+          },
+        });
         break;
       }
+
+      default:
+        throw new BadRequestException(`Unhandled Razorpay webhook event type: ${eventType}`);
     }
   }
 
@@ -414,8 +607,7 @@ export class WebhookProcessorService {
     });
 
     if (!plan) {
-      this.logger.warn(`[WebhookProcessor] Plan [${params.planCode}] not found.`);
-      return;
+      throw new NotFoundException(`Subscription plan [${params.planCode}] not found.`);
     }
 
     const currentPeriodStart = new Date();
@@ -459,18 +651,30 @@ export class WebhookProcessorService {
       });
     }
 
-    // Record Payment
-    await this.prisma.payment.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount: params.amount ?? (params.interval === BillingInterval.YEARLY ? plan.priceYearly : plan.priceMonthly),
-        currency: params.currency,
-        status: PaymentStatus.SUCCEEDED,
-        providerCode: params.providerCode,
-        externalTxId: params.paymentIntentId,
-        paidAt: new Date(),
-      },
-    });
+    // Check duplicate Payment before creating
+    if (params.paymentIntentId) {
+      const existingPayment = await this.prisma.payment.findFirst({
+        where: {
+          externalTxId: params.paymentIntentId,
+          providerCode: params.providerCode,
+        },
+      });
+
+      if (!existingPayment) {
+        await this.prisma.payment.create({
+          data: {
+            subscriptionId: subscription.id,
+            amount:
+              params.amount ?? (params.interval === BillingInterval.YEARLY ? plan.priceYearly : plan.priceMonthly),
+            currency: params.currency,
+            status: PaymentStatus.SUCCEEDED,
+            providerCode: params.providerCode,
+            externalTxId: params.paymentIntentId,
+            paidAt: new Date(),
+          },
+        });
+      }
+    }
 
     // Sync quotas
     await this.subscriptionService.syncQuotaToSubscription(params.organizationId, params.planCode);
@@ -507,18 +711,27 @@ export class WebhookProcessorService {
       }
     }
 
-    if (sub) {
-      await this.prisma.payment.create({
-        data: {
-          subscriptionId: sub.id,
-          amount: params.amount,
-          currency: params.currency,
-          status: PaymentStatus.SUCCEEDED,
-          providerCode: params.providerCode,
+    if (sub && params.externalTxId) {
+      const existingPayment = await this.prisma.payment.findFirst({
+        where: {
           externalTxId: params.externalTxId,
-          paidAt: new Date(),
+          providerCode: params.providerCode,
         },
       });
+
+      if (!existingPayment) {
+        await this.prisma.payment.create({
+          data: {
+            subscriptionId: sub.id,
+            amount: params.amount,
+            currency: params.currency,
+            status: PaymentStatus.SUCCEEDED,
+            providerCode: params.providerCode,
+            externalTxId: params.externalTxId,
+            paidAt: new Date(),
+          },
+        });
+      }
     }
   }
 }

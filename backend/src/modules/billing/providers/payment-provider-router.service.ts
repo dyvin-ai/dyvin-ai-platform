@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PaymentProviderCode } from '@prisma/client';
 import { BasePaymentProvider } from './base-payment-provider.interface';
 import { MockPaymentProvider } from './mock-payment.provider';
@@ -20,6 +20,9 @@ export class PaymentProviderRouter {
   }
 
   getProvider(code: PaymentProviderCode = PaymentProviderCode.MOCK): BasePaymentProvider {
+    if (code === PaymentProviderCode.MOCK && process.env['NODE_ENV'] === 'production') {
+      throw new BadRequestException('Mock payment provider is disabled in production.');
+    }
     const provider = this.providers.get(code);
     if (!provider) {
       throw new NotFoundException(`Payment provider [${code}] not found or supported.`);

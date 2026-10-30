@@ -78,7 +78,7 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
 
       return {
         sessionId: sub.id,
-        orderId: sub.id,
+        subscriptionId: sub.id,
         providerCode: this.providerCode,
         keyId,
         currency: 'INR',
@@ -195,6 +195,53 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
       );
     } catch {
       return false;
+    }
+  }
+
+  async verifyPaymentWithProvider(input: VerifyPaymentInput): Promise<{
+    valid: boolean;
+    orderId: string;
+    paymentId: string;
+    organizationId?: string;
+    amount?: number;
+    currency?: string;
+    status?: string;
+  }> {
+    // 1. Validate signature using HMAC-SHA256(order_id + "|" + payment_id, secret)
+    const signatureValid = this.verifyPaymentSignature(input);
+    if (!signatureValid) {
+      this.logger.warn(`[Razorpay] Payment signature check failed for order [${input.orderId}] payment [${input.paymentId}]`);
+      return { valid: false, orderId: input.orderId, paymentId: input.paymentId };
+    }
+
+    // 2. Query Razorpay API to verify payment entity, order linkage, and capture status
+    const rzp = this.getRazorpayClient();
+    try {
+      const payment = await (rzp.payments.fetch as any)(input.paymentId);
+      const matchesOrder = payment.order_id === input.orderId;
+      const isCapturedOrAuthorized = payment.status === 'captured' || payment.status === 'authorized';
+      const organizationId = payment.notes?.organizationId;
+
+      if (!matchesOrder) {
+        this.logger.warn(`[Razorpay] Payment [${input.paymentId}] order_id mismatch: expected [${input.orderId}], got [${payment.order_id}]`);
+      }
+
+      return {
+        valid: signatureValid && matchesOrder && isCapturedOrAuthorized,
+        orderId: input.orderId,
+        paymentId: input.paymentId,
+        organizationId,
+        amount: payment.amount ? Number(payment.amount) / 100 : undefined,
+        currency: payment.currency ? payment.currency.toUpperCase() : 'INR',
+        status: payment.status,
+      };
+    } catch (err: any) {
+      this.logger.error(`[Razorpay] Failed to fetch payment entity [${input.paymentId}]: ${err.message}`, err.stack);
+      return {
+        valid: false,
+        orderId: input.orderId,
+        paymentId: input.paymentId,
+      };
     }
   }
 
