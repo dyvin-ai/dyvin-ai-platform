@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AuthorityLevel, CitationSourceType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 
 @Injectable()
@@ -24,6 +25,35 @@ export class CitationAnalyticsService {
   }
 
   async getSources() {
+    const count = await this.prisma.citationSource.count();
+    if (count === 0) {
+      const defaultSources = [
+        { domain: 'gartner.com', apexDomain: 'gartner.com', authorityScore: 95, authorityLevel: AuthorityLevel.AUTHORITATIVE, sourceType: CitationSourceType.THIRD_PARTY },
+        { domain: 'forbes.com', apexDomain: 'forbes.com', authorityScore: 94, authorityLevel: AuthorityLevel.AUTHORITATIVE, sourceType: CitationSourceType.NEWS },
+        { domain: 'techcrunch.com', apexDomain: 'techcrunch.com', authorityScore: 92, authorityLevel: AuthorityLevel.AUTHORITATIVE, sourceType: CitationSourceType.NEWS },
+        { domain: 'g2.com', apexDomain: 'g2.com', authorityScore: 88, authorityLevel: AuthorityLevel.HIGH, sourceType: CitationSourceType.THIRD_PARTY },
+        { domain: 'venturebeat.com', apexDomain: 'venturebeat.com', authorityScore: 86, authorityLevel: AuthorityLevel.HIGH, sourceType: CitationSourceType.NEWS },
+        { domain: 'capterra.com', apexDomain: 'capterra.com', authorityScore: 83, authorityLevel: AuthorityLevel.HIGH, sourceType: CitationSourceType.THIRD_PARTY },
+        { domain: 'medium.com', apexDomain: 'medium.com', authorityScore: 82, authorityLevel: AuthorityLevel.HIGH, sourceType: CitationSourceType.EARNED },
+        { domain: 'reddit.com', apexDomain: 'reddit.com', authorityScore: 74, authorityLevel: AuthorityLevel.HIGH, sourceType: CitationSourceType.FORUM },
+        { domain: 'producthunt.com', apexDomain: 'producthunt.com', authorityScore: 69, authorityLevel: AuthorityLevel.MEDIUM, sourceType: CitationSourceType.THIRD_PARTY },
+        { domain: 'github.com', apexDomain: 'github.com', authorityScore: 96, authorityLevel: AuthorityLevel.AUTHORITATIVE, sourceType: CitationSourceType.DOCUMENTATION },
+      ];
+
+      for (const s of defaultSources) {
+        await this.prisma.citationSource.create({
+          data: {
+            domain: s.domain,
+            apexDomain: s.apexDomain,
+            authorityScore: s.authorityScore,
+            authorityLevel: s.authorityLevel,
+            sourceType: s.sourceType,
+            isVerified: true,
+          },
+        });
+      }
+    }
+
     return this.prisma.citationSource.findMany({
       include: { citations: { take: 5 } },
       orderBy: { authorityScore: 'desc' },

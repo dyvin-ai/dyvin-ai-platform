@@ -8,6 +8,7 @@ import { StructuredDataService } from './extractors/structured-data.service';
 import { TechnologyDetectorService } from './extractors/technology-detector.service';
 import { PageCrawlProcessor } from './processors/page-crawl.processor';
 import { WebsiteCrawlProcessor } from './processors/website-crawl.processor';
+import { WebsiteAnalyzerService } from './services/website-analyzer.service';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { WebsiteCrawlProcessor } from './processors/website-crawl.processor';
     StructuredDataService,
     TechnologyDetectorService,
     SecurityDetectorService,
+    WebsiteAnalyzerService,
     WebsiteCrawlProcessor,
     PageCrawlProcessor,
   ],
@@ -33,6 +35,7 @@ import { WebsiteCrawlProcessor } from './processors/website-crawl.processor';
     StructuredDataService,
     TechnologyDetectorService,
     SecurityDetectorService,
+    WebsiteAnalyzerService,
   ],
 })
 export class CrawlerModule {}

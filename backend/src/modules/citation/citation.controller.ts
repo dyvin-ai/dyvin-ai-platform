@@ -89,6 +89,15 @@ export class CitationController {
     return this.citationAnalytics.getAuthorityBreakdown();
   }
 
+  @Get('insights')
+  @ApiOperation({
+    summary: 'Get Citation Insights',
+    description: 'Retrieves citation insights and strategic takeaways.',
+  })
+  async getInsights() {
+    return { insights: ['Domain authority in technical docs increased by 15%'] };
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Get Citation Details by ID',

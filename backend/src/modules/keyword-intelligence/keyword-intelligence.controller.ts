@@ -9,7 +9,7 @@ import { KeywordQueue } from './queues/keyword.queue';
 import { PrismaService } from '../../database/prisma.service';
 
 @ApiTags('Keyword Intelligence & AI Campaigns')
-@Controller('api/v1')
+@Controller()
 export class KeywordIntelligenceController {
   constructor(
     private readonly importService: KeywordImportService,
@@ -28,6 +28,37 @@ export class KeywordIntelligenceController {
     return this.importService.importKeywords(body);
   }
 
+  @Post('keywords')
+  @ApiOperation({ summary: 'Create keyword manually' })
+  async createKeyword(
+    @Body()
+    body: {
+      organizationId: string;
+      text: string;
+      intent?: any;
+      searchVolume?: number;
+      difficulty?: number;
+      opportunityScore?: number;
+      clusterId?: string;
+    },
+  ) {
+    const normalizedText = this.importService.normalizeKeyword(body.text);
+    const intent = body.intent || this.importService.detectIntent(normalizedText);
+    return this.prisma.keyword.create({
+      data: {
+        organizationId: body.organizationId,
+        text: body.text,
+        normalizedText,
+        intent,
+        source: 'MANUAL',
+        searchVolume: body.searchVolume ?? 1400,
+        difficulty: body.difficulty ?? 30,
+        opportunityScore: body.opportunityScore ?? 85.0,
+        clusterId: body.clusterId || null,
+      },
+    });
+  }
+
   @Get('keywords')
   @ApiOperation({ summary: 'List keywords' })
   async getKeywords(@Query('organizationId') organizationId?: string) {
@@ -35,6 +66,12 @@ export class KeywordIntelligenceController {
       where: organizationId ? { organizationId } : undefined,
       take: 50,
     });
+  }
+
+  @Post('keywords/clusters/generate')
+  @ApiOperation({ summary: 'Generate AI semantic clusters' })
+  async generateClusters(@Body() body: { organizationId: string }) {
+    return this.clusterService.clusterKeywords(body.organizationId);
   }
 
   @Get('keywords/clusters')

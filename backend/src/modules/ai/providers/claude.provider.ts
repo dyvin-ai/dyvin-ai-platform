@@ -23,7 +23,48 @@ export class ClaudeProvider implements BaseAIProvider {
 
   async chat(options: ChatOptions): Promise<NormalizedAIResponse> {
     const startTime = Date.now();
+    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     const lastMsg = options.messages[options.messages.length - 1]?.content || '';
+
+    if (apiKey && !apiKey.includes('dummy') && !apiKey.includes('placeholder')) {
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: options.model || this.defaultModel,
+            max_tokens: options.maxTokens ?? 2048,
+            messages: [{ role: 'user', content: lastMsg }],
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.content?.[0]?.text || '';
+          const promptTokens = data.usage?.input_tokens || this.estimateTokens(lastMsg);
+          const completionTokens = data.usage?.output_tokens || this.estimateTokens(content);
+          return {
+            provider: this.code,
+            model: options.model || this.defaultModel,
+            content,
+            structuredData: null,
+            usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+            latencyMs: Date.now() - startTime,
+            estimatedCost: this.estimateCost(promptTokens, completionTokens, options.model),
+            executionMode: 'LIVE',
+            isLive: true,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Anthropic live API call failed: ${err.message}. Falling back to deterministic simulation.`);
+      }
+    }
+
     const content = `[Anthropic Claude Mode]: Response to "${lastMsg}"`;
     const promptTokens = this.estimateTokens(lastMsg);
     const completionTokens = this.estimateTokens(content);
@@ -36,6 +77,8 @@ export class ClaudeProvider implements BaseAIProvider {
       usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
       latencyMs: Date.now() - startTime,
       estimatedCost: this.estimateCost(promptTokens, completionTokens, options.model),
+      executionMode: 'DETERMINISTIC_FALLBACK',
+      isLive: false,
     };
   }
 

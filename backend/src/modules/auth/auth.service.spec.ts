@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -36,6 +37,15 @@ describe('AuthService', () => {
               update: jest.fn(),
               updateMany: jest.fn(),
             },
+            subscriptionPlan: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'p-free' }),
+            },
+            organizationSubscription: {
+              create: jest.fn().mockResolvedValue({ id: 'sub-free' }),
+            },
+            usageQuota: {
+              upsert: jest.fn().mockResolvedValue({ id: 'quota-1' }),
+            },
             $transaction: jest.fn((cb) => cb(prisma)),
           },
         },
@@ -49,6 +59,13 @@ describe('AuthService', () => {
           provide: AuditService,
           useValue: {
             logAction: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: MailService,
+          useValue: {
+            sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
+            sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],

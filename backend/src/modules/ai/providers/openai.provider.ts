@@ -25,7 +25,7 @@ export class OpenAIProvider implements BaseAIProvider {
     const startTime = Date.now();
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
 
-    if (!apiKey) {
+    if (!apiKey || apiKey.includes('dummy') || apiKey.includes('placeholder')) {
       return this.fallbackMockResponse(options, startTime);
     }
 
@@ -42,6 +42,7 @@ export class OpenAIProvider implements BaseAIProvider {
           temperature: options.temperature ?? 0.7,
           max_tokens: options.maxTokens ?? 2048,
         }),
+        signal: AbortSignal.timeout(4000),
       });
 
       const data = await response.json();
@@ -67,6 +68,8 @@ export class OpenAIProvider implements BaseAIProvider {
         },
         latencyMs,
         estimatedCost: this.estimateCost(promptTokens, completionTokens, options.model),
+        executionMode: 'LIVE',
+        isLive: true,
       };
     } catch (err: any) {
       this.logger.warn(`OpenAI call failed, falling back: ${err.message}`);
@@ -154,6 +157,8 @@ export class OpenAIProvider implements BaseAIProvider {
       usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
       latencyMs: Date.now() - startTime,
       estimatedCost: this.estimateCost(promptTokens, completionTokens, options.model),
+      executionMode: 'DETERMINISTIC_FALLBACK',
+      isLive: false,
     };
   }
 }

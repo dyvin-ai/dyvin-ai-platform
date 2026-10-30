@@ -3,7 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SREOperationsService } from './sre-operations.service';
 
 @ApiTags('Enterprise SRE Operations & Observability')
-@Controller('api/v1/ops')
+@Controller('ops')
 export class SREOperationsController {
   constructor(private readonly sreService: SREOperationsService) {}
 

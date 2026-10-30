@@ -9,7 +9,7 @@ import { SourceIntelligenceService } from './services/source-intelligence.servic
 import { GlobalTrendService } from './services/global-trend.service';
 
 @ApiTags('Dyvin Global Intelligence Layer & AI Knowledge Graph')
-@Controller('api/v1/global')
+@Controller('global')
 export class GlobalIntelligenceLayerController {
   constructor(
     private readonly knowledgeGraphService: GlobalKnowledgeGraphService,

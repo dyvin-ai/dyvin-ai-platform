@@ -10,7 +10,7 @@ import { WorkflowStudioService } from './services/workflow-studio.service';
 import { TemplateService } from './services/template.service';
 
 @ApiTags('Enterprise AI App Platform, Marketplace & Low-Code Studio')
-@Controller('api/v1/apps')
+@Controller('apps')
 export class AppPlatformController {
   constructor(
     private readonly dashboardService: AppPlatformDashboardService,

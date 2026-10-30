@@ -37,6 +37,8 @@ export class MockAIProvider implements BaseAIProvider {
       },
       latencyMs,
       estimatedCost: this.estimateCost(promptTokens, completionTokens),
+      executionMode: 'DETERMINISTIC_FALLBACK',
+      isLive: false,
     };
   }
 

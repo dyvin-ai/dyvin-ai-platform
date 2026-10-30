@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ExportFormat, ExportStatus } from '@prisma/client';
+import { ExportFormat, ExportStatus, ReportType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { ReportExporterService } from './report-exporter.service';
@@ -15,7 +15,14 @@ describe('ReportExporterService', () => {
           provide: PrismaService,
           useValue: {
             report: {
-              findUnique: jest.fn().mockResolvedValue({ id: 'rep-1', sections: [] }),
+              findUnique: jest.fn().mockResolvedValue({
+                id: 'rep-1',
+                title: 'Executive Intelligence Report',
+                reportType: ReportType.EXECUTIVE,
+                createdAt: new Date(),
+                project: { id: 'p-1', name: 'Dyvin AI', organizationId: 'org-1' },
+                sections: [],
+              }),
             },
             exportJob: {
               create: jest.fn().mockResolvedValue({

@@ -8,8 +8,11 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
+  // Enable rawBody buffering so webhook signature verification can access the original payload bytes.
+  // Stripe and Razorpay require the raw, un-parsed body for HMAC signature construction.
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
+    rawBody: true,
   });
 
   // Use Pino Logger globally
@@ -29,7 +32,7 @@ async function bootstrap(): Promise<void> {
     origin: nodeEnv === 'production' ? false : '*',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Organization-Id', 'x-organization-id'],
   });
 
   // Global Validation Pipe

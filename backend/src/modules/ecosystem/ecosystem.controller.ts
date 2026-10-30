@@ -7,7 +7,7 @@ import { AcademyService } from './services/academy.service';
 import { CommunityService } from './services/community.service';
 
 @ApiTags('Enterprise Partner Ecosystem & Academy')
-@Controller('api/v1')
+@Controller()
 export class EcosystemController {
   constructor(
     private readonly agencyService: AgencyService,

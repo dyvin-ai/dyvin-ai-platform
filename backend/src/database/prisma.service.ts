@@ -27,8 +27,13 @@ export class PrismaService
       await this.$connect();
       this.logger.log('Successfully connected to PostgreSQL database via Prisma');
     } catch (error) {
-      this.logger.error('Failed to connect to PostgreSQL database:', error);
-      throw error;
+      this.logger.warn(
+        'Warning: Unable to connect to PostgreSQL database during startup. Database features will retry on request: ' +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      if (process.env.NODE_ENV === 'production') {
+        throw error;
+      }
     }
   }
 

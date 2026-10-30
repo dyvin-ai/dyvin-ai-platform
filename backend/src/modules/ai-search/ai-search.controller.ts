@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AIProviderCode, PromptStatus, PromptType } from '@prisma/client';
+import { CurrentOrganization } from '../../common/decorators/current-organization.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -9,24 +10,59 @@ import { AISearchAnalyticsService } from './services/ai-search-analytics.service
 import { PromptExecutionService } from './services/prompt-execution.service';
 import { PromptLibraryService } from './services/prompt-library.service';
 
+import { IsArray, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
 export class CreatePromptBodyDto {
+  @IsString()
+  @IsNotEmpty()
   aiSearchProjectId!: string;
+
+  @IsString()
+  @IsOptional()
   groupId?: string;
+
+  @IsString()
+  @IsNotEmpty()
   promptText!: string;
+
+  @IsEnum(PromptType)
+  @IsOptional()
   type?: PromptType;
+
+  @IsArray()
+  @IsOptional()
   tags?: string[];
 }
 
 export class UpdatePromptBodyDto {
+  @IsString()
+  @IsOptional()
   promptText?: string;
+
+  @IsEnum(PromptStatus)
+  @IsOptional()
   status?: PromptStatus;
+
+  @IsString()
+  @IsOptional()
   groupId?: string;
+
+  @IsArray()
+  @IsOptional()
   tags?: string[];
 }
 
 export class ExecutePromptBodyDto {
+  @IsString()
+  @IsNotEmpty()
   promptId!: string;
+
+  @IsEnum(AIProviderCode)
+  @IsOptional()
   providerCode?: AIProviderCode;
+
+  @IsString()
+  @IsOptional()
   organizationId?: string;
 }
 
@@ -59,12 +95,18 @@ export class AISearchController {
   @Get('prompts')
   @ApiOperation({
     summary: 'List AI Search Prompts',
-    description: 'Retrieves prompts filtered by AI Search Project ID.',
+    description: 'Retrieves prompts filtered by AI Search Project ID, Project ID, or Organization.',
   })
   @ApiQuery({ name: 'aiSearchProjectId', required: false })
+  @ApiQuery({ name: 'projectId', required: false })
   @ApiResponse({ status: 200, description: 'List of prompts.' })
-  async getPrompts(@Query('aiSearchProjectId') aiSearchProjectId?: string) {
-    return this.promptLibrary.getPrompts(aiSearchProjectId);
+  async getPrompts(
+    @CurrentUser('id') userId: string,
+    @CurrentOrganization() organizationId?: string,
+    @Query('aiSearchProjectId') aiSearchProjectId?: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.promptLibrary.getPrompts(aiSearchProjectId, organizationId, userId, projectId);
   }
 
   @Get('prompts/:id')
@@ -117,12 +159,13 @@ export class AISearchController {
   @ApiResponse({ status: 200, description: 'Prompt execution result.' })
   async executePrompt(
     @CurrentUser('id') userId: string,
+    @CurrentOrganization() organizationId: string | undefined,
     @Body() dto: ExecutePromptBodyDto,
   ) {
     return this.executionService.executePrompt({
       promptId: dto.promptId,
       providerCode: dto.providerCode,
-      organizationId: dto.organizationId,
+      organizationId: dto.organizationId || organizationId,
       userId,
     });
   }

@@ -7,7 +7,7 @@ import { CustomerKnowledgeGraphService } from './services/customer-knowledge-gra
 import { PrivacyIsolationService } from './services/privacy-isolation.service';
 
 @ApiTags('Enterprise Customer Intelligence Layer & Privacy')
-@Controller('api/v1/customer-intelligence')
+@Controller('customer-intelligence')
 export class CustomerIntelligenceController {
   constructor(
     private readonly warehouseService: CustomerWarehouseService,

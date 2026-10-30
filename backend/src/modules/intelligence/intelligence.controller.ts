@@ -7,7 +7,7 @@ import { OptimizationMemoryService } from './services/optimization-memory.servic
 import { BenchmarkEngineService } from './services/benchmark-engine.service';
 
 @ApiTags('Enterprise AI Intelligence Warehouse')
-@Controller('api/v1/intelligence')
+@Controller('intelligence')
 export class IntelligenceController {
   constructor(
     private readonly warehouseService: IntelligenceWarehouseService,

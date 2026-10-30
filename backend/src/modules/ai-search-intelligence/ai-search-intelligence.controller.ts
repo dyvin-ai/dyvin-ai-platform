@@ -15,7 +15,7 @@ import { GeoRecommendationService } from './services/geo-recommendation.service'
 import { GeoActionService } from './services/geo-action.service';
 
 @ApiTags('Enterprise AI Search Visibility & GEO Analytics')
-@Controller('api/v1/ai-search')
+@Controller('ai-search')
 export class AiSearchIntelligenceController {
   constructor(
     private readonly dashboardService: AiSearchDashboardService,

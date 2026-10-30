@@ -77,9 +77,11 @@ web_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
 .env.local
 .env.*
 !.env.example
+!.env.production.example
 
 # parcel-bundle cache
 .cache
@@ -156,3 +158,10 @@ shared/*.js
 # NestJS Build
 /dist
 /development-local
+
+# Runtime generated storage and export artifacts
+backend/storage/
+
+# Temporary developer scratch scripts
+scratch/
+

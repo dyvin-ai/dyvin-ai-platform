@@ -7,7 +7,7 @@ import { ResearchPublicationService } from './services/research-publication.serv
 import { GlobalAuthorityService } from './services/global-authority.service';
 
 @ApiTags('Enterprise AI Industry Cloud & Benchmarks')
-@Controller('api/v1/industry')
+@Controller('industry')
 export class IndustryCloudController {
   constructor(
     private readonly intelligenceService: IndustryIntelligenceService,

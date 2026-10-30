@@ -6,7 +6,7 @@ import { GlobalDomainService } from './services/global-domain.service';
 import { CrossModelService } from './services/cross-model.service';
 
 @ApiTags('Enterprise Global Intelligence Network')
-@Controller('api/v1/intelligence/global')
+@Controller('intelligence/global')
 export class GlobalIntelligenceController {
   constructor(
     private readonly warehouseService: UnifiedWarehouseService,

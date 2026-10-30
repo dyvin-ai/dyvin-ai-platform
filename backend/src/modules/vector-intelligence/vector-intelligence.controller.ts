@@ -5,7 +5,7 @@ import { VectorSearchService } from './services/vector-search.service';
 import { SimilarityEngineService } from './services/similarity-engine.service';
 
 @ApiTags('Enterprise Vector Intelligence Platform')
-@Controller('api/v1/vector')
+@Controller('vector')
 export class VectorIntelligenceController {
   constructor(
     private readonly embeddingEngine: EmbeddingEngineService,

@@ -13,7 +13,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
-    "test": "jest",
+    "test": "jest --maxWorkers=2 --logHeapUsage",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json",
@@ -31,6 +31,7 @@
     "@nestjs/swagger": "^8.1.0",
     "@nestjs/throttler": "^6.3.0",
     "@prisma/client": "^6.2.1",
+    "@types/pdfkit": "^0.17.6",
     "argon2": "^0.41.1",
     "bullmq": "^5.34.8",
     "cheerio": "^1.0.0",
@@ -42,10 +43,13 @@
     "nestjs-pino": "^4.2.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.19.1",
     "pino": "^9.6.0",
     "pino-http": "^10.3.0",
+    "razorpay": "^2.9.8",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stripe": "^23.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

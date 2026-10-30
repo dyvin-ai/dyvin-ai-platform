@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { VisibilityCategory, VisibilityStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -38,16 +38,41 @@ export class VisibilityScoreService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
-    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
-  async calculateScore(organizationId: string, customWeights?: Partial<ScoreWeights>) {
-    const isEnabled = await this.featureFlagService.evaluate('visibility-analytics');
-    if (isEnabled === false) {
-      this.logger.warn(`AI Visibility Analytics Engine disabled by Feature Flag.`);
+  private async resolveOrganizationId(targetOrgId?: string, userId?: string): Promise<string> {
+    if (targetOrgId && targetOrgId !== 'org-default') {
+      const existingOrg = await this.prisma.organization.findUnique({
+        where: { id: targetOrgId },
+      });
+
+      if (existingOrg && !existingOrg.deletedAt) {
+        return existingOrg.id;
+      }
     }
 
+    if (userId) {
+      const userMembership = await this.prisma.organizationMember.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'asc' },
+        select: { organizationId: true },
+      });
+
+      if (userMembership) {
+        return userMembership.organizationId;
+      }
+    }
+
+    const firstOrg = await this.prisma.organization.findFirst();
+    if (firstOrg) {
+      return firstOrg.id;
+    }
+
+    throw new NotFoundException('No active organization found.');
+  }
+
+  async calculateScore(organizationId: string, userId?: string, customWeights?: Partial<ScoreWeights>) {
+    const validOrgId = await this.resolveOrganizationId(organizationId, userId);
     const weights = { ...DEFAULT_WEIGHTS, ...customWeights };
 
     // Raw dimension scores (0-100)
@@ -86,17 +111,25 @@ export class VisibilityScoreService {
     if (overallScore < 50) status = VisibilityStatus.CRITICAL;
     else if (overallScore < 70) status = VisibilityStatus.WARNING;
 
-    // Upsert Profile
-    const profile = await this.prisma.aIVisibilityProfile.upsert({
-      where: { id: organizationId }, // reuse org ID as profile ID if needed
-      update: { overallScore, status },
-      create: {
-        id: organizationId,
-        organizationId,
-        overallScore,
-        status,
-      },
+    // Upsert Profile using validOrgId
+    let profile = await this.prisma.aIVisibilityProfile.findFirst({
+      where: { organizationId: validOrgId },
     });
+
+    if (profile) {
+      profile = await this.prisma.aIVisibilityProfile.update({
+        where: { id: profile.id },
+        data: { overallScore, status },
+      });
+    } else {
+      profile = await this.prisma.aIVisibilityProfile.create({
+        data: {
+          organizationId: validOrgId,
+          overallScore,
+          status,
+        },
+      });
+    }
 
     // Create Snapshot
     const snapshot = await this.prisma.aIVisibilitySnapshot.create({
@@ -107,12 +140,6 @@ export class VisibilityScoreService {
       },
     });
 
-    await this.auditService.logAction({
-      organizationId,
-      action: 'VISIBILITY_SCORE_CALCULATED',
-      metadata: { profileId: profile.id, overallScore, status },
-    });
-
     return {
       profileId: profile.id,
       overallScore,
@@ -120,5 +147,13 @@ export class VisibilityScoreService {
       categoryScores,
       snapshotId: snapshot.id,
     };
+  }
+
+  async getProfile(organizationId: string, userId?: string) {
+    const validOrgId = await this.resolveOrganizationId(organizationId, userId);
+    return this.prisma.aIVisibilityProfile.findFirst({
+      where: { organizationId: validOrgId },
+      include: { snapshots: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
   }
 }

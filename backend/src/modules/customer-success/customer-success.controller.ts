@@ -7,7 +7,7 @@ import { ChurnPredictionService } from './services/churn-prediction.service';
 import { CustomerSuccessAssistantService } from './services/customer-success-assistant.service';
 
 @ApiTags('Enterprise Customer Success Platform')
-@Controller('api/v1/customer-success')
+@Controller('customer-success')
 export class CustomerSuccessController {
   constructor(
     private readonly healthService: CustomerHealthService,

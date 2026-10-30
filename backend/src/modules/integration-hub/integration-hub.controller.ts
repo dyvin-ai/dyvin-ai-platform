@@ -7,7 +7,7 @@ import { CMSEngineService, PublishContentInput } from './services/cms-engine.ser
 import { IntegrationQueue } from './queues/integration.queue';
 
 @ApiTags('Enterprise Integration Hub')
-@Controller('api/v1/integrations')
+@Controller('integrations')
 export class IntegrationHubController {
   constructor(
     private readonly connectionService: ConnectionProviderService,

@@ -1,10 +1,10 @@
-# Dyvin AI — Enterprise AI Strategy Intelligence & Decision Platform
+# Dyvin AI — Enterprise AI Visibility Operating System (AEO / GEO Intelligence)
 
-[![Backend CI](https://github.com/singam-naresh/dyvin-ai/actions/workflows/backend.yml/badge.svg)](https://github.com/singam-naresh/dyvin-ai/actions/workflows/backend.yml)
-[![Frontend CI](https://github.com/singam-naresh/dyvin-ai/actions/workflows/frontend.yml/badge.svg)](https://github.com/singam-naresh/dyvin-ai/actions/workflows/frontend.yml)
+[![Backend CI](https://github.com/dyvin-ai/dyvin-ai-platform/actions/workflows/backend.yml/badge.svg)](https://github.com/dyvin-ai/dyvin-ai-platform/actions/workflows/backend.yml)
+[![Frontend CI](https://github.com/dyvin-ai/dyvin-ai-platform/actions/workflows/frontend.yml/badge.svg)](https://github.com/dyvin-ai/dyvin-ai-platform/actions/workflows/frontend.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Dyvin AI is an enterprise-grade SaaS platform offering continuous search visibility intelligence, competitive gap analysis, and AI-driven strategy recommendations. It tracks domain mentions and authority levels across search systems to guide business optimization cycles.
+Dyvin AI is the premier AI Visibility Operating System for modern enterprises, engineered for Answer Engine Optimization (AEO) and Generative Engine Optimization (GEO). It delivers continuous search visibility intelligence, cross-engine citation monitoring, competitor brand sentiment analytics, and autonomous optimization workflows across generative AI search systems (OpenAI ChatGPT, Google Gemini, Anthropic Claude, and Perplexity AI).
 
 ---
 

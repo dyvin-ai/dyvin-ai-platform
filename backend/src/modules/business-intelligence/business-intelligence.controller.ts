@@ -7,7 +7,7 @@ import { KPIEngineService } from './services/kpi-engine.service';
 import { ForecastEngineService } from './services/forecast-engine.service';
 
 @ApiTags('Enterprise Business Intelligence & Executive Analytics')
-@Controller('api/v1/business')
+@Controller('business')
 export class BusinessIntelligenceController {
   constructor(
     private readonly dashboardService: ExecutiveDashboardService,

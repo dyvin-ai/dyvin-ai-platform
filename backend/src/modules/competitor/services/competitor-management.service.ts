@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { CompetitorStatus, CompetitorType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -34,7 +34,26 @@ export class CompetitorManagementService {
     private readonly featureFlagService: FeatureFlagService,
   ) {}
 
-  async createCompetitor(input: CreateCompetitorInput) {
+  private async verifyOrganizationMember(userId: string, organizationId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required.');
+    }
+    const membership = await this.prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new ForbiddenException('Access denied: You are not a member of this organization.');
+    }
+  }
+
+  async createCompetitor(userId: string, input: CreateCompetitorInput) {
+    await this.verifyOrganizationMember(userId, input.organizationId);
+
     const isEnabled = await this.featureFlagService.evaluate('competitor-intelligence');
     if (isEnabled === false) {
       this.logger.warn(`Competitor Intelligence Engine disabled by Feature Flag.`);
@@ -62,15 +81,31 @@ export class CompetitorManagementService {
     return competitor;
   }
 
-  async getCompetitors(organizationId?: string) {
+  async getCompetitors(userId: string, organizationId?: string) {
+    if (organizationId && organizationId !== 'org-default') {
+      await this.verifyOrganizationMember(userId, organizationId);
+      return this.prisma.competitor.findMany({
+        where: { organizationId, status: CompetitorStatus.ACTIVE },
+        include: { group: true, visibilities: { take: 1, orderBy: { recordedAt: 'desc' } } },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
+    // Find all organizations user is member of
+    const memberships = await this.prisma.organizationMember.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    const userOrgIds = memberships.map((m) => m.organizationId);
+
     return this.prisma.competitor.findMany({
-      where: organizationId ? { organizationId, status: CompetitorStatus.ACTIVE } : { status: CompetitorStatus.ACTIVE },
+      where: { organizationId: { in: userOrgIds }, status: CompetitorStatus.ACTIVE },
       include: { group: true, visibilities: { take: 1, orderBy: { recordedAt: 'desc' } } },
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  async getCompetitorById(id: string) {
+  async getCompetitorById(id: string, userId: string) {
     const competitor = await this.prisma.competitor.findUnique({
       where: { id },
       include: { group: true, visibilities: true, citations: true, insights: true, trends: true },
@@ -80,14 +115,15 @@ export class CompetitorManagementService {
       throw new NotFoundException(`Competitor [${id}] not found.`);
     }
 
+    await this.verifyOrganizationMember(userId, competitor.organizationId);
     return competitor;
   }
 
-  async updateCompetitor(id: string, input: UpdateCompetitorInput) {
-    await this.getCompetitorById(id);
+  async updateCompetitor(id: string, userId: string, input: UpdateCompetitorInput) {
+    const competitor = await this.getCompetitorById(id, userId);
 
     const updated = await this.prisma.competitor.update({
-      where: { id },
+      where: { id: competitor.id },
       data: {
         name: input.name,
         domain: input.domain ? input.domain.toLowerCase().replace(/^www\./, '') : undefined,
@@ -107,11 +143,11 @@ export class CompetitorManagementService {
     return updated;
   }
 
-  async deleteCompetitor(id: string) {
-    await this.getCompetitorById(id);
+  async deleteCompetitor(id: string, userId: string) {
+    const competitor = await this.getCompetitorById(id, userId);
 
     await this.prisma.competitor.delete({
-      where: { id },
+      where: { id: competitor.id },
     });
 
     await this.auditService.logAction({

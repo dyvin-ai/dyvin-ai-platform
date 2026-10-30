@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, RawBodyRequest, Req, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PaymentProviderCode, PlanTier, Role } from '@prisma/client';
+import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -51,11 +52,13 @@ export class BillingController {
   }
 
   @Get('subscription')
+  @Roles(Role.VIEWER)
   @ApiOperation({
     summary: 'Get Organization Subscription',
-    description: 'Retrieves active subscription, current billing period, and status.',
+    description: 'Retrieves active subscription, current billing period, and status. Requires verified membership in the specified organization.',
   })
   @ApiResponse({ status: 200, description: 'Organization subscription overview.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
   async getSubscription(@Headers('x-organization-id') organizationId: string) {
     return this.billingEngine.getSubscription(organizationId);
   }
@@ -121,31 +124,37 @@ export class BillingController {
   }
 
   @Get('usage')
+  @Roles(Role.VIEWER)
   @ApiOperation({
     summary: 'Get Quota & Usage Metrics',
-    description: 'Retrieves current monthly usage vs plan limits for scans, AI requests, storage, and exports.',
+    description: 'Retrieves current monthly usage vs plan limits for scans, AI requests, storage, and exports. Requires verified membership in the specified organization.',
   })
   @ApiResponse({ status: 200, description: 'Usage metrics.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
   async getUsage(@Headers('x-organization-id') organizationId: string) {
     return this.billingEngine.getUsage(organizationId);
   }
 
   @Get('invoices')
+  @Roles(Role.VIEWER)
   @ApiOperation({
     summary: 'Get Organization Invoices',
-    description: 'Retrieves itemized invoices and billing history.',
+    description: 'Retrieves itemized invoices and billing history. Requires verified membership in the specified organization.',
   })
   @ApiResponse({ status: 200, description: 'List of invoices.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
   async getInvoices(@Headers('x-organization-id') organizationId: string) {
     return this.billingEngine.getInvoices(organizationId);
   }
 
   @Get('payments')
+  @Roles(Role.VIEWER)
   @ApiOperation({
     summary: 'Get Organization Payments',
-    description: 'Retrieves payment history records.',
+    description: 'Retrieves payment history records. Requires verified membership in the specified organization.',
   })
   @ApiResponse({ status: 200, description: 'List of payments.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
   async getPayments(@Headers('x-organization-id') organizationId: string) {
     return this.billingEngine.getPayments(organizationId);
   }
@@ -155,22 +164,29 @@ export class BillingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Inbound Payment Provider Webhooks',
-    description: 'Receives webhook events from Stripe, Razorpay, or Mock payment provider.',
+    description: 'Receives webhook events from Stripe, Razorpay, or Mock payment provider. Signatures are verified cryptographically for all non-Mock providers.',
   })
   @ApiHeader({ name: 'stripe-signature', required: false, description: 'Stripe Signature Header' })
+  @ApiHeader({ name: 'x-razorpay-signature', required: false, description: 'Razorpay Signature Header' })
   @ApiResponse({ status: 200, description: 'Webhook event processed.' })
+  @ApiResponse({ status: 400, description: 'Invalid or missing webhook signature.' })
   async handleWebhook(
+    @Req() req: RawBodyRequest<Request>,
     @Headers('stripe-signature') stripeSig?: string,
     @Headers('x-razorpay-signature') rzpSig?: string,
     @Body() body?: any,
   ) {
     const providerCode = body?.providerCode || (stripeSig ? PaymentProviderCode.STRIPE : rzpSig ? PaymentProviderCode.RAZORPAY : PaymentProviderCode.MOCK);
-    const signature = stripeSig || rzpSig || 'mock_sig';
+    const signature = stripeSig || rzpSig || '';
+
+    // Pass raw body buffer so providers can perform cryptographic signature verification
+    const rawBody = req.rawBody;
 
     return this.webhookProcessor.processWebhook({
       providerCode,
       signature,
       body: body || {},
+      rawBody,
     });
   }
 }

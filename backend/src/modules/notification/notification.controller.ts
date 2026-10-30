@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ChannelType, NotificationCategory } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -70,6 +70,29 @@ export class NotificationController {
   @ApiResponse({ status: 200, description: 'All notifications marked as read.' })
   async markAllAsRead(@CurrentUser('id') userId: string) {
     return this.notificationEngine.markAllAsRead(userId);
+  }
+
+  @Delete('notifications/:id')
+  @ApiOperation({
+    summary: 'Dismiss / Delete Single Notification',
+    description: 'Permanently deletes a single notification for the authenticated user.',
+  })
+  @ApiResponse({ status: 200, description: 'Notification deleted.' })
+  async deleteNotification(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.notificationEngine.deleteNotification(userId, id);
+  }
+
+  @Delete('notifications')
+  @ApiOperation({
+    summary: 'Clear All Notifications',
+    description: 'Permanently deletes all notifications for the authenticated user.',
+  })
+  @ApiResponse({ status: 200, description: 'All notifications cleared.' })
+  async clearAllNotifications(@CurrentUser('id') userId: string) {
+    return this.notificationEngine.clearAllNotifications(userId);
   }
 
   @Get('notifications/preferences')

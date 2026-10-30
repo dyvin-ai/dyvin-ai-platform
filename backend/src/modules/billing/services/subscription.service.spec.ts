@@ -33,6 +33,7 @@ describe('SubscriptionService', () => {
               update: jest.fn().mockResolvedValue({ id: 'sub-1', cancelAtPeriodEnd: true }),
             },
             billingAudit: { create: jest.fn().mockResolvedValue({}) },
+            usageQuota: { upsert: jest.fn().mockResolvedValue({}) },
           },
         },
         {

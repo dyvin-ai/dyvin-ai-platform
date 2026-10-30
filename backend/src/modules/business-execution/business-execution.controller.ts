@@ -10,7 +10,7 @@ import { WorkforceExecutionService } from './services/workforce-execution.servic
 import { OptimizationLoopService } from './services/optimization-loop.service';
 
 @ApiTags('Enterprise Autonomous Business Execution & Closed-Loop Platform')
-@Controller('api/v1/execution')
+@Controller('execution')
 export class BusinessExecutionController {
   constructor(
     private readonly dashboardService: BusinessExecutionDashboardService,

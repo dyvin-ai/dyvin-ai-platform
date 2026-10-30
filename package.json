@@ -15,6 +15,7 @@
     "prisma:generate": "pnpm --filter @dyvin-ai/backend prisma:generate"
   },
   "devDependencies": {
+    "pdf-parse": "^1.1.1",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3"
   }

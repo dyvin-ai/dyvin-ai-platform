@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { StrategyEngineService } from './services/strategy-engine.service';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentOrganization } from '../../common/decorators/current-organization.decorator';
+import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { StrategyEngineService, StrategyOverview } from './services/strategy-engine.service';
 import { RootCauseEngineService } from './services/root-cause-engine.service';
 import { ImpactRoiService } from './services/impact-roi.service';
 import { ExecutionPlannerService } from './services/execution-planner.service';
@@ -8,7 +11,9 @@ import { StrategyQueue } from './queues/strategy.queue';
 import { PrismaService } from '../../database/prisma.service';
 
 @ApiTags('AI Strategy Intelligence & Decision Engine')
-@Controller('api/v1/strategy')
+@Controller('strategy')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 export class StrategyIntelligenceController {
   constructor(
     private readonly strategyEngine: StrategyEngineService,
@@ -19,6 +24,30 @@ export class StrategyIntelligenceController {
     private readonly prisma: PrismaService,
   ) {}
 
+  @Get()
+  @ApiOperation({ summary: 'Get Unified Strategy Intelligence Overview' })
+  @ApiQuery({ name: 'projectId', required: false, description: 'Optional project scope within the active organization' })
+  @ApiResponse({ status: 200, description: 'Unified strategy overview including executive recommendation and priority actions' })
+  async getStrategyOverview(
+    @CurrentOrganization() orgId?: string | null,
+    @Query('projectId') projectId?: string,
+    @CurrentUser() user?: UserPayload,
+  ): Promise<StrategyOverview> {
+    const targetOrgId = orgId || 'org-default';
+    return this.strategyEngine.getStrategyOverview(targetOrgId, projectId, user?.id);
+  }
+
+  @Patch('actions/:id')
+  @ApiOperation({ summary: 'Update Strategy Action Status' })
+  async updateActionStatus(
+    @Param('id') actionId: string,
+    @Body() body: { status: 'RECOMMENDED' | 'IN_PROGRESS' | 'COMPLETED' | 'DISMISSED' },
+    @CurrentOrganization() orgId?: string | null,
+  ) {
+    const targetOrgId = orgId || 'org-default';
+    return this.strategyEngine.updateActionStatus(actionId, body.status, targetOrgId);
+  }
+
   @Post('analyze')
   @ApiOperation({ summary: 'Analyze organization data and generate strategy roadmap' })
   async analyze(@Body() body: { organizationId: string; strategyType?: any }) {
@@ -26,7 +55,7 @@ export class StrategyIntelligenceController {
     return this.strategyEngine.analyzeAndCreateStrategy(body);
   }
 
-  @Get()
+  @Get('list')
   @ApiOperation({ summary: 'List strategies' })
   async getStrategies(@Query('organizationId') organizationId?: string) {
     return this.strategyEngine.getStrategies(organizationId);

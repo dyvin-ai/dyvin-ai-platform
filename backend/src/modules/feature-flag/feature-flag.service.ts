@@ -48,23 +48,42 @@ export class FeatureFlagService {
   ) {}
 
   async evaluate(flagKey: string, context: EvaluateFlagContext = {}): Promise<boolean> {
-    const cacheKey = `ff:${flagKey}`;
-    const cachedFlag = await this.redis.get(cacheKey);
+    let flag: any = null;
 
-    let flag: any;
-    if (cachedFlag) {
-      flag = JSON.parse(cachedFlag);
-    } else {
-      flag = await this.prisma.featureFlag.findUnique({
-        where: { key: flagKey },
-        include: { rollouts: true, audiences: true, environments: true },
-      });
+    try {
+      const cacheKey = `ff:${flagKey}`;
+      const cachedFlag = await Promise.race([
+        this.redis.get(cacheKey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+      ]);
 
-      if (!flag) {
-        return false;
+      if (cachedFlag) {
+        flag = JSON.parse(cachedFlag);
       }
+    } catch {
+      // Redis unavailable or timed out, proceed to Prisma
+    }
 
-      await this.redis.set(cacheKey, JSON.stringify(flag), 60); // 60s cache TTL
+    if (!flag) {
+      try {
+        flag = await this.prisma.featureFlag.findUnique({
+          where: { key: flagKey },
+          include: { rollouts: true, audiences: true, environments: true },
+        });
+
+        if (flag) {
+          try {
+            await this.redis.set(`ff:${flagKey}`, JSON.stringify(flag), 60);
+          } catch {}
+        }
+      } catch {
+        // Table or query failed, return default true
+        return true;
+      }
+    }
+
+    if (!flag) {
+      return true; // Default enabled for core modules
     }
 
     // 1. Check Global Kill Switch

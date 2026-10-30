@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { Role } from '@prisma/client';
+import { BillingInterval, PaymentProviderCode, PlanTier, Role, SubscriptionStatus, UsageMetricType } from '@prisma/client';
 import {
   generateRandomToken,
   hashPassword,
@@ -16,6 +16,7 @@ import {
 import { generateSlug } from '../../common/utils/slug.util';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -48,6 +49,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly auditService: AuditService,
+    private readonly mailService: MailService,
   ) {}
 
   async register(
@@ -104,6 +106,9 @@ export class AuthService {
           },
         });
 
+        // Provision FREE plan subscription for new organization
+        await this.provisionFreePlan(tx, newOrg.id);
+
         return { user: newUser, organization: newOrg };
       },
     );
@@ -117,6 +122,13 @@ export class AuthService {
         expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
       },
     });
+
+    // Dispatch verification email
+    try {
+      await this.mailService.sendVerificationEmail(user.email, rawVerificationToken);
+    } catch (mailError) {
+      this.logger.error(`Failed to dispatch verification email to [${user.email}]:`, mailError);
+    }
 
     // Generate Tokens
     const tokens = await this.generateTokens(user.id, user.email, ipAddress, userAgent);
@@ -294,6 +306,11 @@ export class AuthService {
       });
 
       this.logger.log(`Password reset token generated for [${user.email}]`);
+      try {
+        await this.mailService.sendPasswordResetEmail(user.email, rawToken);
+      } catch (mailError) {
+        this.logger.error(`Failed to dispatch password reset email to [${user.email}]:`, mailError);
+      }
     }
 
     return {
@@ -469,6 +486,9 @@ export class AuthService {
           },
         });
 
+        // Provision FREE plan subscription for new OAuth organization
+        await this.provisionFreePlan(tx, newOrg.id);
+
         return { user: newUser, organization: newOrg };
       });
 
@@ -499,6 +519,62 @@ export class AuthService {
     };
   }
 
+
+  /**
+   * Provisions a FREE plan subscription, usage quotas, and credit balance
+   * for a newly created organization inside an active Prisma transaction.
+   */
+  private async provisionFreePlan(tx: any, organizationId: string): Promise<void> {
+    const freePlan = await tx.subscriptionPlan.findUnique({ where: { code: PlanTier.FREE } });
+    if (!freePlan) {
+      this.logger.warn('[AuthService] FREE plan not found in DB — skipping auto-provisioning. Run billing seed first.');
+      return;
+    }
+
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    await tx.organizationSubscription.create({
+      data: {
+        organizationId,
+        planId: freePlan.id,
+        status: SubscriptionStatus.ACTIVE,
+        interval: BillingInterval.MONTHLY,
+        providerCode: PaymentProviderCode.MOCK,
+        externalSubId: `free_${organizationId}`,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: periodEnd,
+      },
+    });
+
+    const resetAt = new Date();
+    resetAt.setMonth(resetAt.getMonth() + 1);
+
+    for (const metric of [UsageMetricType.SCANS, UsageMetricType.AI_REQUESTS]) {
+      await tx.usageQuota.upsert({
+        where: { organizationId_metricType: { organizationId, metricType: metric } },
+        update: {},
+        create: {
+          organizationId,
+          metricType: metric,
+          monthlyLimit: freePlan.monthlyQuota ?? 10,
+          currentUsage: 0,
+          resetAt,
+        },
+      });
+    }
+
+    // Initialize CreditBalance (no unique constraint on organizationId — use create for new orgs)
+    await tx.creditBalance.create({
+      data: {
+        organizationId,
+        balance: freePlan.includedCredits ?? 10,
+        currency: 'USD',
+      },
+    });
+
+    this.logger.log(`[AuthService] FREE plan provisioned for org [${organizationId}]`);
+  }
 
   private async generateTokens(
     userId: string,

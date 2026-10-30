@@ -51,6 +51,8 @@ export interface NormalizedAIResponse<T = any> {
   usage: TokenUsageMetrics;
   latencyMs: number;
   estimatedCost: number;
+  executionMode?: 'LIVE' | 'DETERMINISTIC_FALLBACK' | 'SEEDED';
+  isLive?: boolean;
 }
 
 export interface NormalizedEmbeddingResponse {

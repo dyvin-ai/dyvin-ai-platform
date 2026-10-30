@@ -4,7 +4,7 @@ import { DomainEventBusService } from './domain-event-bus.service';
 import { EventOutboxService } from './event-outbox.service';
 
 @ApiTags('Enterprise Domain Event Bus')
-@Controller('api/v1/events')
+@Controller('events')
 export class EventsController {
   constructor(
     private readonly eventBus: DomainEventBusService,

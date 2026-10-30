@@ -1,9 +1,12 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { AISearchModule } from '../ai-search/ai-search.module';
 import { AuditModule } from '../audit/audit.module';
+import { CrawlerModule } from '../crawler/crawler.module';
 import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
 import { VisibilityQueue } from './queues/visibility.queue';
 import { VisibilityAnomalyService } from './services/visibility-anomaly.service';
+import { VisibilityBaselineService } from './services/visibility-baseline.service';
 import { VisibilityBenchmarkService } from './services/visibility-benchmark.service';
 import { VisibilityForecastService } from './services/visibility-forecast.service';
 import { VisibilityInsightService } from './services/visibility-insight.service';
@@ -16,6 +19,8 @@ import { VisibilityWorker } from './workers/visibility.worker';
   imports: [
     AuditModule,
     FeatureFlagModule,
+    CrawlerModule,
+    AISearchModule,
     BullModule.registerQueue(
       { name: VisibilityQueue.SCORE_QUEUE },
       { name: VisibilityQueue.FORECAST_QUEUE },
@@ -31,6 +36,7 @@ import { VisibilityWorker } from './workers/visibility.worker';
     VisibilityAnomalyService,
     VisibilityBenchmarkService,
     VisibilityInsightService,
+    VisibilityBaselineService,
     VisibilityQueue,
     VisibilityWorker,
   ],
@@ -41,6 +47,7 @@ import { VisibilityWorker } from './workers/visibility.worker';
     VisibilityAnomalyService,
     VisibilityBenchmarkService,
     VisibilityInsightService,
+    VisibilityBaselineService,
     VisibilityQueue,
   ],
 })

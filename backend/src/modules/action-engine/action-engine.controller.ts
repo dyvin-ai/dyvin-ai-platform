@@ -6,7 +6,7 @@ import { PlaybookService, CreatePlaybookInput } from './services/playbook.servic
 import { ActionQueue } from './queues/action.queue';
 
 @ApiTags('AI Action Engine')
-@Controller('api/v1')
+@Controller()
 export class ActionEngineController {
   constructor(
     private readonly actionEngine: ActionEngineService,

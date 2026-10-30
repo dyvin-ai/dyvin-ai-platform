@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentOrganization } from '../../common/decorators/current-organization.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CompetitorBenchmarkService } from './services/competitor-benchmark.service';
@@ -24,15 +26,18 @@ export class CompetitorController {
   @Post()
   @ApiOperation({ summary: 'Create Competitor', description: 'Registers a new competitor domain for tracking.' })
   @ApiResponse({ status: 201, description: 'Competitor created successfully.' })
-  async createCompetitor(@Body() body: CreateCompetitorInput) {
-    return this.managementService.createCompetitor(body);
+  async createCompetitor(@CurrentUser('id') userId: string, @Body() body: CreateCompetitorInput) {
+    return this.managementService.createCompetitor(userId, body);
   }
 
   @Get()
   @ApiOperation({ summary: 'List Competitors', description: 'Retrieves tracked competitors for an organization.' })
   @ApiQuery({ name: 'organizationId', required: false })
-  async getCompetitors(@Query('organizationId') organizationId?: string) {
-    return this.managementService.getCompetitors(organizationId);
+  async getCompetitors(
+    @CurrentUser('id') userId: string,
+    @CurrentOrganization() organizationId?: string,
+  ) {
+    return this.managementService.getCompetitors(userId, organizationId);
   }
 
   @Get('comparisons')
@@ -71,19 +76,23 @@ export class CompetitorController {
 
   @Get(':id')
   @ApiOperation({ summary: 'Get Competitor by ID', description: 'Retrieves competitor detail profile.' })
-  async getCompetitorById(@Param('id') id: string) {
-    return this.managementService.getCompetitorById(id);
+  async getCompetitorById(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.managementService.getCompetitorById(id, userId);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update Competitor', description: 'Updates competitor details.' })
-  async updateCompetitor(@Param('id') id: string, @Body() body: UpdateCompetitorInput) {
-    return this.managementService.updateCompetitor(id, body);
+  async updateCompetitor(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() body: UpdateCompetitorInput,
+  ) {
+    return this.managementService.updateCompetitor(id, userId, body);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete Competitor', description: 'Removes competitor from tracking.' })
-  async deleteCompetitor(@Param('id') id: string) {
-    return this.managementService.deleteCompetitor(id);
+  async deleteCompetitor(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.managementService.deleteCompetitor(id, userId);
   }
 }

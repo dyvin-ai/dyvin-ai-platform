@@ -23,7 +23,46 @@ export class GeminiProvider implements BaseAIProvider {
 
   async chat(options: ChatOptions): Promise<NormalizedAIResponse> {
     const startTime = Date.now();
+    const apiKey = this.configService.get<string>('GEMINI_API_KEY') || this.configService.get<string>('GOOGLE_AI_API_KEY');
     const lastMsg = options.messages[options.messages.length - 1]?.content || '';
+
+    if (apiKey && !apiKey.includes('dummy') && !apiKey.includes('placeholder')) {
+      try {
+        const model = options.model || this.defaultModel;
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: lastMsg }] }],
+            }),
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const promptTokens = this.estimateTokens(lastMsg);
+          const completionTokens = this.estimateTokens(content);
+          return {
+            provider: this.code,
+            model,
+            content,
+            structuredData: null,
+            usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+            latencyMs: Date.now() - startTime,
+            estimatedCost: this.estimateCost(promptTokens, completionTokens, model),
+            executionMode: 'LIVE',
+            isLive: true,
+          };
+        }
+      } catch (err: any) {
+        this.logger.warn(`Gemini live API call failed: ${err.message}. Falling back to deterministic simulation.`);
+      }
+    }
+
     const content = `[Google Gemini Mode]: Response to "${lastMsg}"`;
     const promptTokens = this.estimateTokens(lastMsg);
     const completionTokens = this.estimateTokens(content);
@@ -36,6 +75,8 @@ export class GeminiProvider implements BaseAIProvider {
       usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
       latencyMs: Date.now() - startTime,
       estimatedCost: this.estimateCost(promptTokens, completionTokens, options.model),
+      executionMode: 'DETERMINISTIC_FALLBACK',
+      isLive: false,
     };
   }
 

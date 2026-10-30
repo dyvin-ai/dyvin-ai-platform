@@ -32,19 +32,44 @@ export class ReportEngineService {
     return this.analyticsService.getTrendAnalysis(projectId, periodDays);
   }
 
-  getReports(projectId?: string) {
-    return this.reportGenerator.getReports(projectId);
+  getReports(projectId?: string, organizationId?: string) {
+    return this.reportGenerator.getReports(projectId, organizationId);
   }
 
-  getReportDetails(reportId: string) {
-    return this.reportGenerator.getReportDetails(reportId);
+  getReportDetails(reportId: string, organizationId?: string) {
+    return this.reportGenerator.getReportDetails(reportId, organizationId);
   }
 
-  generateReport(projectId: string, reportType?: ReportType, title?: string, userId?: string) {
-    return this.reportGenerator.generateReport({ projectId, reportType, title }, userId);
+  generateReport(
+    projectId: string,
+    reportType?: ReportType,
+    title?: string,
+    userId?: string,
+    organizationId?: string,
+    periodDays?: number,
+    periodStart?: string,
+    periodEnd?: string,
+  ) {
+    return this.reportGenerator.generateReport(
+      { projectId, reportType, title, periodDays, periodStart, periodEnd },
+      userId,
+      organizationId,
+    );
   }
 
-  exportReport(reportId: string, format?: ExportFormat, userId?: string) {
-    return this.reportExporter.exportReport({ reportId, format }, userId);
+  exportReport(reportId: string, format?: ExportFormat, userId?: string, organizationId?: string) {
+    return this.reportExporter.exportReport({ reportId, format }, userId, organizationId);
+  }
+
+  getExports(reportId: string, organizationId?: string) {
+    return this.reportExporter.getExports(reportId, organizationId);
+  }
+
+  getExportFile(reportId: string, exportId: string, organizationId?: string, userId?: string) {
+    return this.reportExporter.getExportFile(reportId, exportId, organizationId, userId);
+  }
+
+  deleteReport(reportId: string, organizationId?: string, userId?: string) {
+    return this.reportGenerator.deleteReport(reportId, organizationId, userId);
   }
 }

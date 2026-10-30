@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { WorkflowExecutionMode, WorkflowNodeType, WorkflowStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -25,7 +25,31 @@ export class WorkflowOrchestratorService {
     private readonly notificationService: NotificationEngineService,
   ) {}
 
-  async createWorkflow(input: CreateStudioWorkflowInput) {
+  private async verifyOrganizationMember(userId: string, organizationId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Authentication required.');
+    }
+    const membership = await this.prisma.organizationMember.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new ForbiddenException('Access denied: You are not a member of this organization.');
+    }
+  }
+
+  async createWorkflow(userIdOrInput: string | CreateStudioWorkflowInput, inputData?: CreateStudioWorkflowInput) {
+    const input = typeof userIdOrInput === 'string' ? inputData! : userIdOrInput;
+    const userId = typeof userIdOrInput === 'string' ? userIdOrInput : undefined;
+
+    if (userId) {
+      await this.verifyOrganizationMember(userId, input.organizationId);
+    }
+
     const isEnabled = await this.featureFlagService.evaluate('ff-workflow-studio');
     if (isEnabled === false) {
       this.logger.warn(`Workflow Studio feature flag disabled.`);
@@ -61,11 +85,19 @@ export class WorkflowOrchestratorService {
     return workflow;
   }
 
-  async runWorkflow(id: string) {
+  async runWorkflow(id: string, userId?: string) {
+    const workflow = userId
+      ? await this.getWorkflowById(id, userId)
+      : await this.prisma.workflow.findUnique({ where: { id } });
+
+    if (!workflow) {
+      throw new NotFoundException(`Workflow [${id}] not found.`);
+    }
+
     this.logger.log(`Executing visual workflow ${id}`);
 
-    const workflow = await this.prisma.workflow.update({
-      where: { id },
+    await this.prisma.workflow.update({
+      where: { id: workflow.id },
       data: { status: WorkflowStatus.RUNNING },
     });
 
@@ -99,23 +131,27 @@ export class WorkflowOrchestratorService {
     });
   }
 
-  async pauseWorkflow(id: string) {
+  async pauseWorkflow(id: string, userId: string) {
+    const workflow = await this.getWorkflowById(id, userId);
     return this.prisma.workflow.update({
-      where: { id },
+      where: { id: workflow.id },
       data: { status: WorkflowStatus.PAUSED },
     });
   }
 
-  async resumeWorkflow(id: string) {
+  async resumeWorkflow(id: string, userId: string) {
+    const workflow = await this.getWorkflowById(id, userId);
     return this.prisma.workflow.update({
-      where: { id },
+      where: { id: workflow.id },
       data: { status: WorkflowStatus.ACTIVE },
     });
   }
 
-  async updateWorkflow(id: string, data: Partial<CreateStudioWorkflowInput>) {
+  async updateWorkflow(id: string, userId: string, data: Partial<CreateStudioWorkflowInput>) {
+    const workflow = await this.getWorkflowById(id, userId);
+
     return this.prisma.workflow.update({
-      where: { id },
+      where: { id: workflow.id },
       data: {
         name: data.name,
         description: data.description,
@@ -124,28 +160,66 @@ export class WorkflowOrchestratorService {
     });
   }
 
-  async deleteWorkflow(id: string) {
-    return this.prisma.workflow.delete({ where: { id } });
+  async deleteWorkflow(id: string, userId: string) {
+    const workflow = await this.getWorkflowById(id, userId);
+    return this.prisma.workflow.delete({ where: { id: workflow.id } });
   }
 
-  async getWorkflows(organizationId?: string) {
+  async getWorkflows(userId: string, organizationId?: string) {
+    if (organizationId && organizationId !== 'org-default') {
+      await this.verifyOrganizationMember(userId, organizationId);
+      return this.prisma.workflow.findMany({
+        where: { organizationId },
+        include: { nodes: true, edges: true, executions: true },
+        take: 50,
+      });
+    }
+
+    const memberships = await this.prisma.organizationMember.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    const userOrgIds = memberships.map((m) => m.organizationId);
+
     return this.prisma.workflow.findMany({
-      where: organizationId ? { organizationId } : undefined,
+      where: { organizationId: { in: userOrgIds } },
       include: { nodes: true, edges: true, executions: true },
       take: 50,
     });
   }
 
-  async getWorkflowById(id: string) {
-    return this.prisma.workflow.findUnique({
+  async getWorkflowById(id: string, userId: string) {
+    const workflow = await this.prisma.workflow.findUnique({
       where: { id },
       include: { nodes: true, edges: true, versions: true, executions: true },
     });
+
+    if (!workflow) {
+      throw new NotFoundException(`Workflow [${id}] not found.`);
+    }
+
+    await this.verifyOrganizationMember(userId, workflow.organizationId);
+    return workflow;
   }
 
-  async getExecutions(workflowId?: string) {
+  async getExecutions(userId: string, workflowId?: string) {
+    if (workflowId) {
+      await this.getWorkflowById(workflowId, userId);
+      return this.prisma.workflowExecution.findMany({
+        where: { workflowId },
+        include: { steps: true, logs: true },
+        take: 50,
+      });
+    }
+
+    const memberships = await this.prisma.organizationMember.findMany({
+      where: { userId },
+      select: { organizationId: true },
+    });
+    const userOrgIds = memberships.map((m) => m.organizationId);
+
     return this.prisma.workflowExecution.findMany({
-      where: workflowId ? { workflowId } : undefined,
+      where: { workflow: { organizationId: { in: userOrgIds } } },
       include: { steps: true, logs: true },
       take: 50,
     });

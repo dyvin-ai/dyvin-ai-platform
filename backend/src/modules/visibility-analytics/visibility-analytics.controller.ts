@@ -1,17 +1,21 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { VisibilityAnomalyService } from './services/visibility-anomaly.service';
+import { VisibilityBaselineService } from './services/visibility-baseline.service';
 import { VisibilityBenchmarkService } from './services/visibility-benchmark.service';
 import { VisibilityForecastService } from './services/visibility-forecast.service';
 import { VisibilityInsightService } from './services/visibility-insight.service';
 import { VisibilityScoreService } from './services/visibility-score.service';
 import { VisibilityTimelineService } from './services/visibility-timeline.service';
 
+import { CurrentOrganization } from '../../common/decorators/current-organization.decorator';
+import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
+
 @ApiTags('AI Visibility Analytics & Scoring Engine')
 @Controller('visibility')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class VisibilityAnalyticsController {
   constructor(
@@ -21,42 +25,89 @@ export class VisibilityAnalyticsController {
     private readonly anomalyService: VisibilityAnomalyService,
     private readonly benchmarkService: VisibilityBenchmarkService,
     private readonly insightService: VisibilityInsightService,
+    private readonly baselineService: VisibilityBaselineService,
   ) {}
+
+  @Get(['baseline', 'baseline/status'])
+  @ApiOperation({ summary: 'Get Baseline Scan State', description: 'Retrieves current scan progress, stage, and coverage for the active workspace.' })
+  @ApiQuery({ name: 'projectId', required: false })
+  async getBaselineStatus(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('projectId') projectId?: string,
+    @CurrentUser() user?: UserPayload,
+  ) {
+    const targetOrgId = orgIdFromHeader || undefined;
+    return this.baselineService.getBaselineState(targetOrgId, projectId, user?.id);
+  }
+
+  @Post('baseline')
+  @ApiOperation({ summary: 'Trigger Baseline Scan', description: 'Starts an asynchronous initial visibility scan for the workspace domain.' })
+  async triggerBaseline(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Body('projectId') projectId?: string,
+    @CurrentUser() user?: UserPayload,
+  ) {
+    const targetOrgId = orgIdFromHeader || undefined;
+    return this.baselineService.triggerBaselineScan(targetOrgId, user?.id || 'system-user', projectId);
+  }
 
   @Get()
   @ApiOperation({ summary: 'Get Overview Profile', description: 'Retrieves current AI Visibility Profile.' })
-  @ApiQuery({ name: 'organizationId', required: true })
-  async getOverview(@Query('organizationId') organizationId: string) {
-    return this.scoreService.calculateScore(organizationId);
+  @ApiQuery({ name: 'organizationId', required: false })
+  async getOverview(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('organizationId') organizationId?: string,
+    @CurrentUser() user?: UserPayload,
+  ) {
+    const targetOrgId = organizationId || orgIdFromHeader || 'org-default';
+    return this.scoreService.calculateScore(targetOrgId, user?.id);
   }
 
   @Get('score')
   @ApiOperation({ summary: 'Calculate Score', description: 'Recalculates weighted AI Visibility Score (0-100).' })
-  @ApiQuery({ name: 'organizationId', required: true })
-  async getScore(@Query('organizationId') organizationId: string) {
-    return this.scoreService.calculateScore(organizationId);
+  @ApiQuery({ name: 'organizationId', required: false })
+  async getScore(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('organizationId') organizationId?: string,
+    @CurrentUser() user?: UserPayload,
+  ) {
+    const targetOrgId = organizationId || orgIdFromHeader || 'org-default';
+    return this.scoreService.calculateScore(targetOrgId, user?.id);
   }
 
   @Get('history')
   @ApiOperation({ summary: 'Get Visibility Snapshots', description: 'Retrieves historical score snapshots.' })
-  @ApiQuery({ name: 'profileId', required: true })
+  @ApiQuery({ name: 'profileId', required: false })
   @ApiQuery({ name: 'days', required: false })
-  async getHistory(@Query('profileId') profileId: string, @Query('days') days?: number) {
-    return this.timelineService.getTimeline(profileId, days ? Number(days) : 30);
+  async getHistory(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('profileId') profileId?: string,
+    @Query('days') days?: number,
+  ) {
+    const targetId = profileId || orgIdFromHeader || 'org-default';
+    return this.timelineService.getTimeline(targetId, days ? Number(days) : 30);
   }
 
   @Get('trends')
   @ApiOperation({ summary: 'Get Growth Trends', description: 'Calculates growth rates, velocity, and trend direction.' })
-  @ApiQuery({ name: 'profileId', required: true })
-  async getTrends(@Query('profileId') profileId: string) {
-    return this.timelineService.getTrends(profileId);
+  @ApiQuery({ name: 'profileId', required: false })
+  async getTrends(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('profileId') profileId?: string,
+  ) {
+    const targetId = profileId || orgIdFromHeader || 'org-default';
+    return this.timelineService.getTrends(targetId);
   }
 
   @Get('timeline')
   @ApiOperation({ summary: 'Get Timeline', description: 'Retrieves time-series data aggregated over dates.' })
-  @ApiQuery({ name: 'profileId', required: true })
-  async getTimeline(@Query('profileId') profileId: string) {
-    return this.timelineService.getTimeline(profileId);
+  @ApiQuery({ name: 'profileId', required: false })
+  async getTimeline(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('profileId') profileId?: string,
+  ) {
+    const targetId = profileId || orgIdFromHeader || 'org-default';
+    return this.timelineService.getTimeline(targetId);
   }
 
   @Get('leaderboard')
@@ -67,10 +118,15 @@ export class VisibilityAnalyticsController {
 
   @Get('forecast')
   @ApiOperation({ summary: 'Generate Predictive Forecast', description: 'Estimates scores for 7, 30, and 90-day horizons.' })
-  @ApiQuery({ name: 'profileId', required: true })
+  @ApiQuery({ name: 'profileId', required: false })
   @ApiQuery({ name: 'days', required: false })
-  async getForecast(@Query('profileId') profileId: string, @Query('days') days?: number) {
-    return this.forecastService.generateForecast(profileId, days ? Number(days) : 30);
+  async getForecast(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('profileId') profileId?: string,
+    @Query('days') days?: number,
+  ) {
+    const targetId = profileId || orgIdFromHeader || 'org-default';
+    return this.forecastService.generateForecast(targetId, days ? Number(days) : 30);
   }
 
   @Get('benchmarks')
@@ -82,9 +138,13 @@ export class VisibilityAnalyticsController {
 
   @Get('insights')
   @ApiOperation({ summary: 'Get Automated Insights', description: 'Identifies top factors and focus recommendations.' })
-  @ApiQuery({ name: 'profileId', required: true })
-  async getInsights(@Query('profileId') profileId: string) {
-    return this.insightService.generateInsights(profileId);
+  @ApiQuery({ name: 'profileId', required: false })
+  async getInsights(
+    @CurrentOrganization() orgIdFromHeader?: string | null,
+    @Query('profileId') profileId?: string,
+  ) {
+    const targetId = profileId || orgIdFromHeader || 'org-default';
+    return this.insightService.generateInsights(targetId);
   }
 
   @Get('distribution')

@@ -11,7 +11,7 @@ import { SecurityAuditService } from './services/security-audit.service';
 import { BruteForceService } from './services/brute-force.service';
 
 @ApiTags('Enterprise Runtime Security, Threat Detection & Attack Protection')
-@Controller('api/v1/security')
+@Controller('security')
 export class RuntimeSecurityController {
   constructor(
     private readonly dashboardService: SecurityDashboardService,

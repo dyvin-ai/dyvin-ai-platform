@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PaymentProviderCode } from '@prisma/client';
+import * as crypto from 'crypto';
 import {
   BasePaymentProvider,
   CreateCustomerInput,
@@ -54,8 +55,52 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
     };
   }
 
+  /**
+   * Verifies a Razorpay webhook signature using HMAC-SHA256.
+   *
+   * Razorpay constructs the signature as:
+   *   HMAC-SHA256(rawBody, RAZORPAY_WEBHOOK_SECRET)
+   * and delivers it in the X-Razorpay-Signature header as a hex digest.
+   *
+   * Returns false if:
+   *   - RAZORPAY_WEBHOOK_SECRET is not configured
+   *   - The signature header is missing
+   *   - The HMAC does not match (constant-time comparison)
+   */
   verifyWebhookSignature(rawBody: string | Buffer, signature: string): boolean {
-    if (!signature) return false;
-    return signature.length > 5;
+    const secret = process.env['RAZORPAY_WEBHOOK_SECRET'];
+
+    if (!secret) {
+      this.logger.warn('[Razorpay] RAZORPAY_WEBHOOK_SECRET is not configured — rejecting webhook.');
+      return false;
+    }
+
+    if (!signature) {
+      return false;
+    }
+
+    const bodyString = Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody;
+
+    const expectedHmac = crypto
+      .createHmac('sha256', secret)
+      .update(bodyString, 'utf8')
+      .digest('hex');
+
+    try {
+      const isValid = crypto.timingSafeEqual(
+        Buffer.from(expectedHmac, 'hex'),
+        Buffer.from(signature, 'hex'),
+      );
+
+      if (!isValid) {
+        this.logger.warn('[Razorpay] Webhook signature verification failed — HMAC mismatch.');
+      }
+
+      return isValid;
+    } catch {
+      // Buffer.from can throw if the signature is not valid hex
+      this.logger.warn('[Razorpay] Webhook signature is not valid hex — rejecting.');
+      return false;
+    }
   }
 }

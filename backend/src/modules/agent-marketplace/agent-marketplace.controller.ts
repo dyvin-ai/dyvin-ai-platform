@@ -7,7 +7,7 @@ import { AgentPackageExportService, ExportAgentInput } from './services/agent-pa
 import { AgentMarketplaceQueue } from './queues/agent-marketplace.queue';
 
 @ApiTags('AI Agent Ecosystem, Skills & Marketplace')
-@Controller('api/v1')
+@Controller()
 export class AgentMarketplaceController {
   constructor(
     private readonly marketplaceService: AgentMarketplaceService,

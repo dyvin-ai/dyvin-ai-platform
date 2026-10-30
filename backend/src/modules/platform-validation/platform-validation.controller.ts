@@ -11,7 +11,7 @@ import { AutonomousOptimizationEngineService } from './services/autonomous-optim
 import { PlatformDigitalTwinService } from './services/platform-digital-twin.service';
 
 @ApiTags('Enterprise Platform Validation, Certification & Mission Control')
-@Controller('api/v1/platform')
+@Controller('platform')
 export class PlatformValidationController {
   constructor(
     private readonly commandCenterService: PlatformCommandCenterService,

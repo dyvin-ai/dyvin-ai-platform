@@ -32,6 +32,14 @@ export class NotificationEngineService {
     return this.dispatcher.markAllAsRead(userId);
   }
 
+  deleteNotification(userId: string, notificationId: string) {
+    return this.dispatcher.deleteNotification(userId, notificationId);
+  }
+
+  clearAllNotifications(userId: string) {
+    return this.dispatcher.clearAllNotifications(userId);
+  }
+
   getPreferences(userId: string) {
     return this.dispatcher.getPreferences(userId);
   }

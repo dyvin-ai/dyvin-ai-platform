@@ -5,10 +5,12 @@ import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { CRAWLER_QUEUES } from '../crawler.constants';
 import { CrawlerService, CrawlWebsiteJobData } from '../crawler.service';
+import { CrawlerSafetyService } from '../services/crawler-safety.service';
 
 @Processor(CRAWLER_QUEUES.CRAWL_WEBSITE)
 export class WebsiteCrawlProcessor extends WorkerHost {
   private readonly logger = new Logger(WebsiteCrawlProcessor.name);
+  private readonly crawlerSafety = new CrawlerSafetyService();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -32,29 +34,60 @@ export class WebsiteCrawlProcessor extends WorkerHost {
         },
       });
 
-      // 2. Fetch root website HTML
+      // 2. Safely fetch root website HTML with per-hop SSRF validation
       let html = '';
       let statusCode = 200;
       let headers: Record<string, any> = {};
 
       try {
-        const response = await fetch(url, {
-          headers: {
-            'User-Agent':
-              'DyvinBot/1.0 (+https://dyvin.ai/bot; AI Visibility & Intelligence Engine)',
-          },
-          signal: AbortSignal.timeout(15000), // 15 seconds timeout
-        });
+        let currentUrl = url;
+        let redirectsCount = 0;
+        const maxRedirects = 3;
+        let response: Response | null = null;
+
+        while (redirectsCount <= maxRedirects) {
+          const safety = this.crawlerSafety.validateUrlSafety(currentUrl);
+          if (!safety.isAllowed) {
+            throw new Error(`SSRF blocked: ${safety.reason}`);
+          }
+
+          const res = await fetch(currentUrl, {
+            headers: {
+              'User-Agent':
+                'DyvinBot/1.0 (+https://dyvin.ai/bot; AI Visibility & Intelligence Engine)',
+            },
+            redirect: 'manual',
+            signal: AbortSignal.timeout(15000),
+          });
+
+          if ([301, 302, 303, 307, 308].includes(res.status)) {
+            const loc = res.headers.get('location');
+            if (loc) {
+              currentUrl = new URL(loc, currentUrl).toString();
+              redirectsCount++;
+              continue;
+            }
+          }
+
+          response = res;
+          break;
+        }
+
+        if (!response) {
+          throw new Error('Too many redirects or no response received');
+        }
+
         statusCode = response.status;
         html = await response.text();
         response.headers.forEach((value, key) => {
           headers[key] = value;
         });
-      } catch (err) {
-        this.logger.warn(`Failed to fetch root URL [${url}], creating placeholder scan page:`, err);
+      } catch (err: any) {
+        this.logger.warn(`Failed to fetch root URL [${url}]: ${err.message}`);
         html = `<html><head><title>Crawl Failed</title></head><body><h1>Unable to reach host</h1></body></html>`;
         statusCode = 504;
       }
+
 
       // 3. Process root page intelligence
       await this.crawlerService.processPageCrawled(scanId, url, html, statusCode, headers, 0);

@@ -9,6 +9,7 @@ import { AISearchController } from './ai-search.controller';
 import { AISearchQueue } from './queues/ai-search.queue';
 import { AISearchAnalyticsService } from './services/ai-search-analytics.service';
 import { AISearchMonitorService } from './services/ai-search-monitor.service';
+import { BrandPromptGeneratorService } from './services/brand-prompt-generator.service';
 import { PromptExecutionService } from './services/prompt-execution.service';
 import { PromptLibraryService } from './services/prompt-library.service';
 import { AISearchWorker } from './workers/ai-search.worker';
@@ -28,6 +29,7 @@ import { AISearchWorker } from './workers/ai-search.worker';
   providers: [
     PromptLibraryService,
     PromptExecutionService,
+    BrandPromptGeneratorService,
     AISearchMonitorService,
     AISearchAnalyticsService,
     AISearchQueue,
@@ -36,6 +38,7 @@ import { AISearchWorker } from './workers/ai-search.worker';
   exports: [
     PromptLibraryService,
     PromptExecutionService,
+    BrandPromptGeneratorService,
     AISearchMonitorService,
     AISearchAnalyticsService,
     AISearchQueue,

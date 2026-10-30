@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { BillingInterval, PaymentProviderCode, PlanTier, SubscriptionStatus } from '@prisma/client';
+import { BillingInterval, PaymentProviderCode, PlanTier, SubscriptionStatus, UsageMetricType } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { PaymentProviderRouter } from '../providers/payment-provider-router.service';
@@ -36,11 +36,11 @@ export class SubscriptionService {
 
   private async seedDefaultPlans() {
     const plansData = [
-      { code: PlanTier.FREE, name: 'Free', priceMonthly: 0, priceYearly: 0 },
-      { code: PlanTier.STARTER, name: 'Starter', priceMonthly: 49, priceYearly: 490 },
-      { code: PlanTier.GROWTH, name: 'Growth', priceMonthly: 149, priceYearly: 1490 },
-      { code: PlanTier.PROFESSIONAL, name: 'Professional', priceMonthly: 399, priceYearly: 3990 },
-      { code: PlanTier.ENTERPRISE, name: 'Enterprise', priceMonthly: 999, priceYearly: 9990 },
+      { code: PlanTier.FREE, name: 'Free', priceMonthly: 0, priceYearly: 0, includedCredits: 10, monthlyQuota: 10 },
+      { code: PlanTier.STARTER, name: 'Starter', priceMonthly: 49, priceYearly: 490, includedCredits: 100, monthlyQuota: 100 },
+      { code: PlanTier.GROWTH, name: 'Growth', priceMonthly: 149, priceYearly: 1490, includedCredits: 500, monthlyQuota: 500 },
+      { code: PlanTier.PROFESSIONAL, name: 'Professional', priceMonthly: 399, priceYearly: 3990, includedCredits: 2000, monthlyQuota: 2000 },
+      { code: PlanTier.ENTERPRISE, name: 'Enterprise', priceMonthly: 999, priceYearly: 9990, includedCredits: -1, monthlyQuota: -1 },
     ];
 
     const createdPlans = [];
@@ -48,7 +48,7 @@ export class SubscriptionService {
     for (const p of plansData) {
       const plan = await this.prisma.subscriptionPlan.upsert({
         where: { code: p.code },
-        update: {},
+        update: { includedCredits: p.includedCredits, monthlyQuota: p.monthlyQuota },
         create: {
           code: p.code,
           name: p.name,
@@ -56,12 +56,46 @@ export class SubscriptionService {
           priceYearly: p.priceYearly,
           currency: 'USD',
           isActive: true,
+          includedCredits: p.includedCredits,
+          monthlyQuota: p.monthlyQuota,
         },
       });
       createdPlans.push(plan);
     }
 
     return this.prisma.subscriptionPlan.findMany({ include: { features: true } });
+  }
+
+  /**
+   * Syncs UsageQuota records for SCANS and AI_REQUESTS to the plan's monthlyQuota value.
+   * Pass a Prisma transaction client (tx) or leave undefined to use this.prisma directly.
+   */
+  async syncQuotaToSubscription(organizationId: string, planCode: PlanTier, tx?: any): Promise<void> {
+    const client = tx ?? this.prisma;
+    const plan = await client.subscriptionPlan.findUnique({ where: { code: planCode } });
+    if (!plan) {
+      this.logger.warn(`[SubscriptionService] Plan [${planCode}] not found — cannot sync quotas.`);
+      return;
+    }
+
+    const limit: number = plan.monthlyQuota ?? 100;
+    const resetAt = new Date();
+    resetAt.setMonth(resetAt.getMonth() + 1);
+
+    for (const metric of [UsageMetricType.SCANS, UsageMetricType.AI_REQUESTS]) {
+      await client.usageQuota.upsert({
+        where: { organizationId_metricType: { organizationId, metricType: metric } },
+        update: { monthlyLimit: limit },
+        create: {
+          organizationId,
+          metricType: metric,
+          monthlyLimit: limit,
+          currentUsage: 0,
+          resetAt,
+        },
+      });
+    }
+    this.logger.log(`[SubscriptionService] Synced quotas for org [${organizationId}] to plan [${planCode}] (limit: ${limit})`);
   }
 
   async getSubscription(organizationId: string) {
@@ -132,6 +166,9 @@ export class SubscriptionService {
       action: 'SUBSCRIPTION_CREATED',
       metadata: { planCode: input.planCode },
     });
+
+    // Sync quota limits to the new plan
+    await this.syncQuotaToSubscription(input.organizationId, input.planCode);
 
     return subscription;
   }
@@ -216,6 +253,9 @@ export class SubscriptionService {
         details: { oldPlanId: sub.planId, newPlanCode },
       },
     });
+
+    // Sync quota limits to new plan
+    await this.syncQuotaToSubscription(organizationId, newPlanCode);
 
     return updated;
   }

@@ -8,7 +8,7 @@ import { RoutingOptimizationService } from './services/routing-optimization.serv
 import { AIQualityService } from './services/ai-quality.service';
 
 @ApiTags('Enterprise AI Evolution & Model Lifecycle Management')
-@Controller('api/v1/evolution')
+@Controller('evolution')
 export class AIEvolutionController {
   constructor(
     private readonly dashboardService: EvolutionDashboardService,

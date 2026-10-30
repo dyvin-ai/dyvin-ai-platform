@@ -11,7 +11,7 @@ import { AgentCoordinatorService } from './services/agent-coordinator.service';
 import { ExecutiveAssistantService } from './services/executive-assistant.service';
 
 @ApiTags('Enterprise AI Operating System 2.0')
-@Controller('api/v1/os')
+@Controller('os')
 export class AIOperatingSystemController {
   constructor(
     private readonly osService: OperatingSystemService,

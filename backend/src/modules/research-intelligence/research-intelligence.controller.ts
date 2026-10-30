@@ -7,7 +7,7 @@ import { ResearchReportService } from './services/research-report.service';
 import { ResearchQueue } from './queues/research.queue';
 
 @ApiTags('AI Research Intelligence Platform')
-@Controller('api/v1/research')
+@Controller('research')
 export class ResearchIntelligenceController {
   constructor(
     private readonly discoveryEngine: DiscoveryEngineService,

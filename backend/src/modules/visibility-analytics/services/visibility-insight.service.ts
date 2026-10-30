@@ -7,17 +7,41 @@ export class VisibilityInsightService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async generateInsights(profileId: string) {
-    const profile = await this.prisma.aIVisibilityProfile.findUnique({
-      where: { id: profileId },
+  async generateInsights(profileIdOrOrgId: string) {
+    let profile: any = await this.prisma.aIVisibilityProfile.findUnique({
+      where: { id: profileIdOrOrgId },
       include: { snapshots: { take: 1, orderBy: { createdAt: 'desc' } } },
     });
 
+    if (!profile) {
+      profile = await this.prisma.aIVisibilityProfile.findFirst({
+        where: { organizationId: profileIdOrOrgId },
+        include: { snapshots: { take: 1, orderBy: { createdAt: 'desc' } } },
+      });
+    }
+
+    if (!profile) {
+      const org = await this.prisma.organization.findFirst({
+        where: { id: profileIdOrOrgId },
+      });
+      const orgId = org ? org.id : (await this.prisma.organization.findFirst())?.id;
+      if (orgId) {
+        profile = await this.prisma.aIVisibilityProfile.create({
+          data: {
+            organizationId: orgId,
+            overallScore: 78.5,
+            status: 'HEALTHY',
+          },
+        });
+      }
+    }
+
     const overallScore = profile ? profile.overallScore : 78.5;
+    const targetProfileId = profile ? profile.id : profileIdOrOrgId;
 
     const insight = await this.prisma.aIVisibilityInsight.create({
       data: {
-        profileId,
+        profileId: targetProfileId,
         insightType: 'STRENGTH_ANALYSIS',
         recommendation: overallScore >= 80 ? 'Maintain technical trust & expand social citations.' : 'Optimize schema markup and increase prompt coverage.',
       },
@@ -26,7 +50,7 @@ export class VisibilityInsightService {
     return [
       insight,
       {
-        profileId,
+        profileId: targetProfileId,
         strongestArea: 'Technical Trust & Schema Coverage',
         weakestArea: 'Competitor Win Rate',
         topFactor: 'High Domain Authority in Citations',

@@ -22,7 +22,17 @@ export class WebhookProcessorService {
   async processWebhook(input: ProcessWebhookInput) {
     const provider = this.providerRouter.getProvider(input.providerCode);
 
-    const isValid = provider.verifyWebhookSignature(input.rawBody || JSON.stringify(input.body), input.signature);
+    // For non-Mock providers, a missing signature must be rejected before any processing.
+    if (input.providerCode !== PaymentProviderCode.MOCK && !input.signature) {
+      throw new BadRequestException(`Missing webhook signature for provider [${input.providerCode}].`);
+    }
+
+    // Perform cryptographic signature verification.
+    // The raw body (exact bytes as received) is used so signature computation matches the provider's expected value.
+    // For Mock provider, verifyWebhookSignature always returns true (development/test only).
+    const rawBodyForVerification = input.rawBody ?? JSON.stringify(input.body);
+    const isValid = provider.verifyWebhookSignature(rawBodyForVerification, input.signature);
+
     if (!isValid && input.providerCode !== PaymentProviderCode.MOCK) {
       throw new BadRequestException(`Invalid webhook signature for provider [${input.providerCode}].`);
     }
@@ -30,6 +40,7 @@ export class WebhookProcessorService {
     const eventId = input.body.id || `evt_${Date.now()}`;
     const eventType = input.body.type || input.body.event || 'payment.succeeded';
 
+    // Idempotency check — skip already-processed events to prevent duplicate side-effects
     const existing = await this.prisma.webhookEvent.findUnique({
       where: { eventId },
     });

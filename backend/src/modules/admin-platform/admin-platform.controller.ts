@@ -6,7 +6,7 @@ import { CustomerSuccessHealthService } from './services/customer-success-health
 import { AdminPlatformQueue } from './queues/admin-platform.queue';
 
 @ApiTags('Enterprise Administration & Operations Center')
-@Controller('api/v1/admin')
+@Controller('admin')
 export class AdminPlatformController {
   constructor(
     private readonly tenantService: TenantAdminService,

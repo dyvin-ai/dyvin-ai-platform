@@ -34,6 +34,8 @@ import { SearchModule } from './modules/search/search.module';
 import { UserModule } from './modules/user/user.module';
 import { VerificationModule } from './modules/verification/verification.module';
 import { VisibilityAnalyticsModule } from './modules/visibility-analytics/visibility-analytics.module';
+import { OverviewModule } from './modules/overview/overview.module';
+import { BrandIntelligenceModule } from './modules/brand-intelligence/brand-intelligence.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 
@@ -47,6 +49,7 @@ import { WorkflowStudioModule } from './modules/workflow-studio/workflow-studio.
 import { AdminPlatformModule } from './modules/admin-platform/admin-platform.module';
 import { PlatformSecurityModule } from './modules/platform-security/platform-security.module';
 import { AgentMarketplaceModule } from './modules/agent-marketplace/agent-marketplace.module';
+import { AgentIntelligenceModule } from './modules/agent-intelligence/agent-intelligence.module';
 import { DomainEventsModule } from './core/events/events.module';
 import { IntelligenceModule } from './modules/intelligence/intelligence.module';
 import { VectorIntelligenceModule } from './modules/vector-intelligence/vector-intelligence.module';
@@ -68,6 +71,8 @@ import { AppPlatformModule } from './modules/app-platform/app-platform.module';
 import { PlatformValidationModule } from './modules/platform-validation/platform-validation.module';
 import { RuntimeSecurityModule } from './modules/runtime-security/runtime-security.module';
 
+import { MailModule } from './modules/mail/mail.module';
+
 @Module({
   imports: [
     ConfigModule,
@@ -79,6 +84,7 @@ import { RuntimeSecurityModule } from './modules/runtime-security/runtime-securi
     ApiGatewayModule,
     AuditModule,
     AuthModule,
+    MailModule,
     UserModule,
     OrganizationModule,
     ProjectModule,
@@ -101,6 +107,8 @@ import { RuntimeSecurityModule } from './modules/runtime-security/runtime-securi
     CitationModule,
     CompetitorModule,
     VisibilityAnalyticsModule,
+    OverviewModule,
+    BrandIntelligenceModule,
     RetrievalIntelligenceModule,
     KeywordIntelligenceModule,
     StrategyIntelligenceModule,
@@ -132,6 +140,7 @@ import { RuntimeSecurityModule } from './modules/runtime-security/runtime-securi
     AppPlatformModule,
     PlatformValidationModule,
     RuntimeSecurityModule,
+    AgentIntelligenceModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

@@ -1,8 +1,10 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -40,27 +42,32 @@ export class ScanController {
     @Param('id') projectId: string,
     @CurrentOrganization() orgId: string,
     @CurrentUser('id') userId: string,
-    @Req() req: Request,
+    @Body() body?: { url?: string },
+    @Req() req: Request = {} as Request,
   ) {
     const ipAddress = req.ip;
-    const userAgent = req.get('user-agent');
+    const userAgent = req.get ? req.get('user-agent') : undefined;
     return this.scanService.initiateProjectScan(
       projectId,
       orgId,
       userId,
       ipAddress,
       userAgent,
+      body?.url,
     );
   }
 
   @Get('scans')
   @ApiOperation({
     summary: 'List Organization Scans',
-    description: 'Lists all scans for the current active organization.',
+    description: 'Lists all scans for the current active organization, optionally filtered by project.',
   })
   @ApiResponse({ status: 200, description: 'List of scans.' })
-  async getScans(@CurrentOrganization() orgId: string) {
-    return this.scanService.getOrganizationScans(orgId);
+  async getScans(
+    @CurrentOrganization() orgId: string,
+    @Query('projectId') projectId?: string,
+  ) {
+    return this.scanService.getOrganizationScans(orgId, projectId);
   }
 
   @Get('scans/:id')
@@ -69,8 +76,11 @@ export class ScanController {
     description: 'Retrieves status and count summary for specified scan.',
   })
   @ApiResponse({ status: 200, description: 'Scan summary.' })
-  async getScanDetails(@Param('id') scanId: string) {
-    return this.scanService.getScanDetails(scanId);
+  async getScanDetails(
+    @Param('id') scanId: string,
+    @CurrentOrganization() orgId: string,
+  ) {
+    return this.scanService.getScanDetails(scanId, orgId);
   }
 
   @Get('scans/:id/pages')
@@ -79,8 +89,11 @@ export class ScanController {
     description: 'Lists all HTML pages discovered and crawled during scan.',
   })
   @ApiResponse({ status: 200, description: 'List of scan pages.' })
-  async getScanPages(@Param('id') scanId: string) {
-    return this.scanService.getScanPages(scanId);
+  async getScanPages(
+    @Param('id') scanId: string,
+    @CurrentOrganization() orgId: string,
+  ) {
+    return this.scanService.getScanPages(scanId, orgId);
   }
 
   @Get('scans/:id/metadata')
@@ -89,8 +102,11 @@ export class ScanController {
     description: 'Retrieves extracted OpenGraph, Twitter cards, keywords, and meta tags.',
   })
   @ApiResponse({ status: 200, description: 'Extracted scan metadata.' })
-  async getScanMetadata(@Param('id') scanId: string) {
-    return this.scanService.getScanMetadata(scanId);
+  async getScanMetadata(
+    @Param('id') scanId: string,
+    @CurrentOrganization() orgId: string,
+  ) {
+    return this.scanService.getScanMetadata(scanId, orgId);
   }
 
   @Get('scans/:id/structured-data')
@@ -99,8 +115,11 @@ export class ScanController {
     description: 'Retrieves extracted schema.org JSON-LD and microdata entries.',
   })
   @ApiResponse({ status: 200, description: 'Extracted structured data.' })
-  async getScanStructuredData(@Param('id') scanId: string) {
-    return this.scanService.getScanStructuredData(scanId);
+  async getScanStructuredData(
+    @Param('id') scanId: string,
+    @CurrentOrganization() orgId: string,
+  ) {
+    return this.scanService.getScanStructuredData(scanId, orgId);
   }
 
   @Get('scans/:id/technologies')
@@ -109,7 +128,10 @@ export class ScanController {
     description: 'Retrieves detected tech stack signatures (React, Next.js, Cloudflare, etc.).',
   })
   @ApiResponse({ status: 200, description: 'Detected technologies.' })
-  async getScanTechnologies(@Param('id') scanId: string) {
-    return this.scanService.getScanTechnologies(scanId);
+  async getScanTechnologies(
+    @Param('id') scanId: string,
+    @CurrentOrganization() orgId: string,
+  ) {
+    return this.scanService.getScanTechnologies(scanId, orgId);
   }
 }

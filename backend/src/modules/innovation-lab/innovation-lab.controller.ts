@@ -10,7 +10,7 @@ import { BrowserAgentService } from './services/browser-agent.service';
 import { VoiceAgentService } from './services/voice-agent.service';
 
 @ApiTags('Enterprise AI Innovation Lab & Experimental Platform')
-@Controller('api/v1/innovation')
+@Controller('innovation')
 export class InnovationLabController {
   constructor(
     private readonly dashboardService: InnovationDashboardService,

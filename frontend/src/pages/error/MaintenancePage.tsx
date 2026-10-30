@@ -1,1 +1,0 @@
-export { MaintenancePage as default } from './NotFoundPage';

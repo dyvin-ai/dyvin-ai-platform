@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { ThreatSecurityService, LogSecurityEventInput } from './services/threat-security.service';
 import { ComplianceAuditService } from './services/compliance-audit.service';
 import { BackupDisasterRecoveryService } from './services/backup-disaster-recovery.service';
@@ -7,7 +9,9 @@ import { ChaosInfrastructureService } from './services/chaos-infrastructure.serv
 import { PlatformSecurityQueue } from './queues/platform-security.queue';
 
 @ApiTags('Platform Security, Compliance & Disaster Recovery')
-@Controller('api/v1')
+@Controller()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
 export class PlatformSecurityController {
   constructor(
     private readonly securityService: ThreatSecurityService,

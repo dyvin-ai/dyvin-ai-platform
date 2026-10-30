@@ -132,6 +132,50 @@ export class NotificationDispatcherService {
     return { success: true, message: 'All notifications marked as read.' };
   }
 
+  async deleteNotification(userId: string, notificationId: string) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException(`Notification [${notificationId}] not found for user [${userId}].`);
+    }
+
+    await this.prisma.notificationDelivery.deleteMany({
+      where: { notificationId },
+    });
+    await this.prisma.notificationHistory.deleteMany({
+      where: { notificationId },
+    });
+    await this.prisma.notification.delete({
+      where: { id: notificationId },
+    });
+
+    return { success: true, message: `Notification [${notificationId}] deleted.` };
+  }
+
+  async clearAllNotifications(userId: string) {
+    const userNotifications = await this.prisma.notification.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+
+    const notifIds = userNotifications.map((n) => n.id);
+    if (notifIds.length > 0) {
+      await this.prisma.notificationDelivery.deleteMany({
+        where: { notificationId: { in: notifIds } },
+      });
+      await this.prisma.notificationHistory.deleteMany({
+        where: { notificationId: { in: notifIds } },
+      });
+      await this.prisma.notification.deleteMany({
+        where: { userId },
+      });
+    }
+
+    return { success: true, message: `All notifications cleared for user [${userId}].` };
+  }
+
   async getPreferences(userId: string) {
     return this.prisma.notificationPreference.findMany({
       where: { userId },

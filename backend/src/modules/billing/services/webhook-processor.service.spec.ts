@@ -6,19 +6,22 @@ import { WebhookProcessorService } from './webhook-processor.service';
 
 describe('WebhookProcessorService', () => {
   let service: WebhookProcessorService;
+  let prismaMock: any;
 
   beforeEach(async () => {
+    prismaMock = {
+      webhookEvent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({ id: 'evt-1', status: WebhookEventStatus.PROCESSED }),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WebhookProcessorService,
         {
           provide: PrismaService,
-          useValue: {
-            webhookEvent: {
-              findUnique: jest.fn().mockResolvedValue(null),
-              upsert: jest.fn().mockResolvedValue({ id: 'evt-1', status: WebhookEventStatus.PROCESSED }),
-            },
-          },
+          useValue: prismaMock,
         },
         {
           provide: PaymentProviderRouter,
@@ -42,5 +45,32 @@ describe('WebhookProcessorService', () => {
     });
     expect(res.success).toBe(true);
     expect(res.status).toBe(WebhookEventStatus.PROCESSED);
+  });
+
+  it('should reject a non-MOCK webhook event with a missing signature', async () => {
+    await expect(
+      service.processWebhook({
+        providerCode: PaymentProviderCode.STRIPE,
+        signature: '',
+        body: { id: 'evt_200', type: 'invoice.paid' },
+        rawBody: '{"id":"evt_200"}',
+      }),
+    ).rejects.toThrow('Missing webhook signature');
+  });
+
+  it('should return idempotent response when event was already processed', async () => {
+    prismaMock.webhookEvent.findUnique.mockResolvedValue({
+      eventId: 'evt_100',
+      status: WebhookEventStatus.PROCESSED,
+    });
+
+    const res = await service.processWebhook({
+      providerCode: PaymentProviderCode.MOCK,
+      signature: 'sig',
+      body: { id: 'evt_100', type: 'invoice.paid' },
+    });
+
+    expect(res.message).toBe('Webhook event already processed.');
+    expect(prismaMock.webhookEvent.upsert).not.toHaveBeenCalled();
   });
 });

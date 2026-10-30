@@ -8,7 +8,7 @@ import { DeveloperQueue } from './queues/developer.queue';
 import { PrismaService } from '../../database/prisma.service';
 
 @ApiTags('Dyvin Developer Platform')
-@Controller('api/v1/developer')
+@Controller('developer')
 export class DeveloperPlatformController {
   constructor(
     private readonly appService: DeveloperAppService,
