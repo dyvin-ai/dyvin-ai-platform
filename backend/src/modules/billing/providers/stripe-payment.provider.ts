@@ -1,9 +1,11 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { PaymentProviderCode } from '@prisma/client';
 import Stripe from 'stripe';
 import * as crypto from 'crypto';
 import {
   BasePaymentProvider,
+  CheckoutSessionOutput,
+  CreateCheckoutSessionInput,
   CreateCustomerInput,
   CreateSubscriptionInput,
   CustomerOutput,
@@ -80,11 +82,102 @@ export class StripePaymentProvider implements BasePaymentProvider {
     return { clientSecret: intent.client_secret!, paymentIntentId: intent.id };
   }
 
-  private getPriceId(planCode: string): string {
-    const key = `STRIPE_PRICE_${planCode.toUpperCase()}`;
-    const priceId = process.env[key];
+  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSessionOutput> {
+    const stripe = this.getStripeClient();
+    const frontendBaseUrl = process.env['FRONTEND_URL'] || 'http://localhost:5173';
+    const successUrl = input.successUrl || `${frontendBaseUrl}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = input.cancelUrl || `${frontendBaseUrl}/billing?canceled=true`;
+
+    if (input.mode === 'subscription') {
+      if (!input.planCode) {
+        throw new BadRequestException('[Stripe] planCode is required for subscription checkout.');
+      }
+
+      const priceId = this.getPriceId(input.planCode, input.interval);
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: 'subscription',
+          customer_email: input.customerEmail,
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: {
+            organizationId: input.organizationId,
+            userId: input.userId,
+            planCode: input.planCode,
+            interval: input.interval || 'MONTHLY',
+            purpose: 'subscription',
+          },
+          subscription_data: {
+            metadata: {
+              organizationId: input.organizationId,
+              userId: input.userId,
+              planCode: input.planCode,
+            },
+          },
+        },
+        input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined,
+      );
+
+      return {
+        sessionId: session.id,
+        providerCode: this.providerCode,
+        url: session.url,
+        currency: (session.currency || 'USD').toUpperCase(),
+        amount: session.amount_total ? session.amount_total / 100 : input.amount,
+      };
+    } else {
+      // One-off payment / Credit top-up
+      const amount = input.amount ?? 10;
+      const amountInCents = Math.round(amount * 100);
+      const currency = (input.currency || 'usd').toLowerCase();
+
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          customer_email: input.customerEmail,
+          line_items: [
+            {
+              price_data: {
+                currency,
+                product_data: {
+                  name: `Dyvin AI Credit Top-Up (${input.credits || 100} credits)`,
+                  description: 'Additional scan and AI request allowance for your organization',
+                },
+                unit_amount: amountInCents,
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata: {
+            organizationId: input.organizationId,
+            userId: input.userId,
+            purpose: 'top_up',
+            credits: String(input.credits || 0),
+          },
+        },
+        input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined,
+      );
+
+      return {
+        sessionId: session.id,
+        providerCode: this.providerCode,
+        url: session.url,
+        currency: currency.toUpperCase(),
+        amount,
+      };
+    }
+  }
+
+  private getPriceId(planCode: string, interval?: 'MONTHLY' | 'YEARLY'): string {
+    const intervalSuffix = interval ? `_${interval.toUpperCase()}` : '';
+    const specificKey = `STRIPE_PRICE_${planCode.toUpperCase()}${intervalSuffix}`;
+    const genericKey = `STRIPE_PRICE_${planCode.toUpperCase()}`;
+    const priceId = process.env[specificKey] || process.env[genericKey];
     if (!priceId) {
-      this.logger.warn(`[Stripe] ${key} is not configured. Using plan code as price ID fallback.`);
+      this.logger.warn(`[Stripe] Neither ${specificKey} nor ${genericKey} is configured. Using plan code as price ID fallback.`);
       return planCode; // Will fail at Stripe API — logged clearly
     }
     return priceId;

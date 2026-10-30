@@ -2,10 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PaymentProviderCode } from '@prisma/client';
 import {
   BasePaymentProvider,
+  CheckoutSessionOutput,
+  CreateCheckoutSessionInput,
   CreateCustomerInput,
   CreateSubscriptionInput,
   CustomerOutput,
   SubscriptionOutput,
+  VerifyPaymentInput,
 } from './base-payment-provider.interface';
 
 @Injectable()
@@ -19,6 +22,22 @@ export class MockPaymentProvider implements BasePaymentProvider {
       providerCustomerId: `cus_mock_${input.organizationId.substring(0, 8)}`,
       providerCode: this.providerCode,
     };
+  }
+
+  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<CheckoutSessionOutput> {
+    this.logger.log(`[MockPayment] Creating checkout session for org [${input.organizationId}], mode: [${input.mode}]`);
+    const id = `mock_session_${Date.now()}`;
+    return {
+      sessionId: id,
+      providerCode: this.providerCode,
+      url: `http://localhost:5173/billing?mock_checkout=${id}`,
+      amount: input.amount ?? 10,
+      currency: input.currency || 'USD',
+    };
+  }
+
+  verifyPaymentSignature(input: VerifyPaymentInput): boolean {
+    return true;
   }
 
   async createSubscription(input: CreateSubscriptionInput): Promise<SubscriptionOutput> {

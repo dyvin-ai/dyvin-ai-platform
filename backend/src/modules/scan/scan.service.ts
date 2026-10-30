@@ -1,6 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { UsageMetricType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { QuotaEnforcementService } from '../billing/services/quota-enforcement.service';
 import { CrawlerService } from '../crawler/crawler.service';
 import { CrawlerSafetyService } from '../crawler/services/crawler-safety.service';
 
@@ -9,11 +11,11 @@ export class ScanService {
   private readonly logger = new Logger(ScanService.name);
   private readonly crawlerSafety = new CrawlerSafetyService();
 
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly crawlerService: CrawlerService,
     private readonly auditService: AuditService,
+    private readonly quotaEnforcement: QuotaEnforcementService,
   ) {}
 
   async initiateProjectScan(
@@ -82,6 +84,8 @@ export class ScanService {
       throw new BadRequestException(websiteSafety.reason || 'Unsafe website URL rejected.');
     }
 
+    // Enforce and deduct scan quota atomically before accepting billable scan work
+    await this.quotaEnforcement.recordUsage(organizationId, UsageMetricType.SCANS, 1);
 
     const scan = await this.prisma.scan.create({
       data: {

@@ -25,6 +25,37 @@ export interface SubscriptionOutput {
   currentPeriodEnd: Date;
 }
 
+export interface CreateCheckoutSessionInput {
+  organizationId: string;
+  userId: string;
+  customerEmail?: string;
+  mode: 'subscription' | 'payment';
+  planCode?: string;
+  interval?: 'MONTHLY' | 'YEARLY';
+  amount?: number;
+  currency?: string;
+  credits?: number;
+  successUrl?: string;
+  cancelUrl?: string;
+  idempotencyKey?: string;
+}
+
+export interface CheckoutSessionOutput {
+  sessionId: string;
+  providerCode: PaymentProviderCode;
+  url?: string | null;
+  orderId?: string;
+  amount?: number;
+  currency?: string;
+  keyId?: string;
+}
+
+export interface VerifyPaymentInput {
+  orderId: string;
+  paymentId: string;
+  signature: string;
+}
+
 export interface BasePaymentProvider {
   readonly providerCode: PaymentProviderCode;
 
@@ -33,4 +64,6 @@ export interface BasePaymentProvider {
   cancelSubscription(providerSubscriptionId: string): Promise<{ canceled: boolean }>;
   changePlan(providerSubscriptionId: string, newPlanCode: string): Promise<SubscriptionOutput>;
   verifyWebhookSignature(rawBody: string | Buffer, signature: string): boolean;
+  createCheckoutSession?(input: CreateCheckoutSessionInput): Promise<CheckoutSessionOutput>;
+  verifyPaymentSignature?(input: VerifyPaymentInput): boolean;
 }

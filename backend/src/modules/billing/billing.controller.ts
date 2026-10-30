@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, RawBodyRequest, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { PaymentProviderCode, PlanTier, Role } from '@prisma/client';
+import { BillingInterval, PaymentProviderCode, PlanTier, Role } from '@prisma/client';
 import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -17,6 +17,23 @@ export class SubscribeDto {
 
 export class ChangePlanDto {
   newPlanCode!: PlanTier;
+}
+
+export class CreateCheckoutDto {
+  mode!: 'subscription' | 'payment';
+  planCode?: PlanTier;
+  interval?: BillingInterval;
+  topUpCredits?: number;
+  providerCode?: PaymentProviderCode;
+  successUrl?: string;
+  cancelUrl?: string;
+}
+
+export class VerifyPaymentDto {
+  providerCode!: PaymentProviderCode;
+  orderId!: string;
+  paymentId!: string;
+  signature!: string;
 }
 
 export class WebhookPayloadDto {
@@ -77,6 +94,38 @@ export class BillingController {
     @Body() dto: SubscribeDto,
   ) {
     return this.billingEngine.subscribe(organizationId, dto.planCode, userId);
+  }
+
+  @Post('checkout')
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Create Checkout Session or Order',
+    description: 'Generates an authenticated checkout session for Stripe or an order for Razorpay for subscriptions or credit top-ups.',
+  })
+  @ApiBody({ type: CreateCheckoutDto })
+  @ApiResponse({ status: 201, description: 'Checkout session created.' })
+  async createCheckout(
+    @Headers('x-organization-id') organizationId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateCheckoutDto,
+  ) {
+    return this.billingEngine.createCheckout(organizationId, userId, dto);
+  }
+
+  @Post('verify-payment')
+  @Roles(Role.OWNER, Role.ADMIN)
+  @ApiOperation({
+    summary: 'Verify Provider Payment',
+    description: 'Verifies payment signature from provider frontend checkout (e.g. Razorpay modal).',
+  })
+  @ApiBody({ type: VerifyPaymentDto })
+  @ApiResponse({ status: 200, description: 'Payment verification result.' })
+  async verifyPayment(
+    @Headers('x-organization-id') organizationId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: VerifyPaymentDto,
+  ) {
+    return this.billingEngine.verifyPayment(organizationId, userId, dto);
   }
 
   @Post('cancel')

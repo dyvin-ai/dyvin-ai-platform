@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 
 // ─── Service / Provider imports ───────────────────────────────────────────────
 import { QuotaEnforcementService } from './services/quota-enforcement.service';
+import { SubscriptionService } from './services/subscription.service';
 import { WebhookProcessorService } from './services/webhook-processor.service';
 import { StripePaymentProvider } from './providers/stripe-payment.provider';
 import { RazorpayPaymentProvider } from './providers/razorpay-payment.provider';
@@ -140,6 +141,18 @@ describe('P0-2 Webhook Signature Validation', () => {
       webhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({ id: 'evt-db-1', status: WebhookEventStatus.PROCESSED }),
+        update: jest.fn().mockResolvedValue({ id: 'evt-db-1', status: WebhookEventStatus.PROCESSED }),
+      },
+      organizationSubscription: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'sub-1' }),
+        update: jest.fn().mockResolvedValue({ id: 'sub-1' }),
+      },
+      subscriptionPlan: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'plan-1', code: 'STARTER', priceMonthly: 49 }),
+      },
+      payment: {
+        create: jest.fn().mockResolvedValue({ id: 'pmt-1' }),
       },
     };
 
@@ -149,6 +162,18 @@ describe('P0-2 Webhook Signature Validation', () => {
         RazorpayPaymentProvider,
         MockPaymentProvider,
         { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: SubscriptionService,
+          useValue: {
+            syncQuotaToSubscription: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: QuotaEnforcementService,
+          useValue: {
+            addCredits: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         {
           provide: PaymentProviderRouter,
           useFactory: (stripe: StripePaymentProvider, rzp: RazorpayPaymentProvider, mock: MockPaymentProvider) => {

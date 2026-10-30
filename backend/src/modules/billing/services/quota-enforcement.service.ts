@@ -176,4 +176,50 @@ export class QuotaEnforcementService {
       where: { organizationId },
     });
   }
+
+  /**
+   * Adds purchased top-up credits to an organization's quota limits.
+   * If monthlyLimit is -1 (unlimited Enterprise), no change is needed.
+   * Otherwise, increments monthlyLimit by the specified credit amount.
+   */
+  async addCredits(organizationId: string, metricType: UsageMetricType, credits: number) {
+    if (credits <= 0) return;
+
+    return this.prisma.$transaction(async (tx) => {
+      let quota = await tx.usageQuota.findUnique({
+        where: {
+          organizationId_metricType: {
+            organizationId,
+            metricType,
+          },
+        },
+      });
+
+      if (!quota) {
+        const resetAt = new Date();
+        resetAt.setMonth(resetAt.getMonth() + 1);
+        quota = await tx.usageQuota.create({
+          data: {
+            organizationId,
+            metricType,
+            monthlyLimit: 100 + credits,
+            currentUsage: 0,
+            resetAt,
+          },
+        });
+      } else if (quota.monthlyLimit !== -1) {
+        quota = await tx.usageQuota.update({
+          where: { id: quota.id },
+          data: {
+            monthlyLimit: { increment: credits },
+          },
+        });
+      }
+
+      this.logger.log(
+        `[QuotaEnforcement] Added [${credits}] credits for org [${organizationId}] on metric [${metricType}]. New limit: ${quota.monthlyLimit}`,
+      );
+      return quota;
+    });
+  }
 }
