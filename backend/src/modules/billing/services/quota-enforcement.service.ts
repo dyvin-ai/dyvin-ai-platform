@@ -310,8 +310,10 @@ export class QuotaEnforcementService {
   /**
    * Adds purchased top-up credits to an organization's CreditBalance and records
    * an idempotent CreditTransaction by provider transaction / event ID.
-   * Also synchronizes usage quotas (SCANS and AI_REQUESTS) so that available
-   * capacity reflects the newly credited allowance.
+   *
+   * Following the intended credit-ledger architecture, purchased credits are recorded
+   * directly in the organization's CreditBalance ledger and CreditTransaction history,
+   * without altering the recurring monthly subscription UsageQuota limits.
    */
   async grantCredits(params: {
     organizationId: string;
@@ -320,7 +322,9 @@ export class QuotaEnforcementService {
     description?: string;
   }) {
     const { organizationId, credits, providerTxId, description } = params;
-    if (credits <= 0) return null;
+    if (credits <= 0) {
+      throw new BadRequestException('Top-up credit quantity must be positive.');
+    }
 
     return this.prisma.$transaction(async (tx) => {
       // Step 1: Find or create CreditBalance for the organization
@@ -351,7 +355,7 @@ export class QuotaEnforcementService {
         this.logger.warn(
           `[QuotaEnforcement] Credits already granted for provider transaction [${providerTxId}] — skipping duplicate.`,
         );
-        return { alreadyGranted: true, creditBalance };
+        return { alreadyGranted: true, creditBalance, creditTransaction: existingTx };
       }
 
       // Step 3: Increment CreditBalance
@@ -362,8 +366,8 @@ export class QuotaEnforcementService {
         },
       });
 
-      // Step 4: Record CreditTransaction linked to CreditBalance
-      await tx.creditTransaction.create({
+      // Step 4: Record CreditTransaction linked to CreditBalance in the credit ledger
+      const creditTx = await tx.creditTransaction.create({
         data: {
           creditId: creditBalance.id,
           amount: credits,
@@ -372,38 +376,80 @@ export class QuotaEnforcementService {
         },
       });
 
-      // Step 5: Keep UsageQuota consistent with the new credit balance
-      for (const metricType of [UsageMetricType.SCANS, UsageMetricType.AI_REQUESTS]) {
-        let quota = await tx.usageQuota.findUnique({
-          where: { organizationId_metricType: { organizationId, metricType } },
-        });
-
-        if (!quota) {
-          const resetAt = new Date();
-          resetAt.setMonth(resetAt.getMonth() + 1);
-          await tx.usageQuota.create({
-            data: {
-              organizationId,
-              metricType,
-              monthlyLimit: 100 + credits,
-              currentUsage: 0,
-              resetAt,
-            },
-          });
-        } else if (quota.monthlyLimit !== -1) {
-          await tx.usageQuota.update({
-            where: { id: quota.id },
-            data: {
-              monthlyLimit: { increment: credits },
-            },
-          });
-        }
-      }
-
       this.logger.log(
         `[QuotaEnforcement] Idempotently granted [${credits}] credits to org [${organizationId}] (Tx: ${providerTxId}). New balance: ${updatedBalance.balance}`,
       );
-      return { alreadyGranted: false, creditBalance: updatedBalance };
+      return { alreadyGranted: false, creditBalance: updatedBalance, creditTransaction: creditTx };
+    });
+  }
+
+  /**
+   * Retrieves an organization's credit balance and ledger transactions.
+   */
+  async getCreditBalance(organizationId: string) {
+    let creditBalance = await this.prisma.creditBalance.findFirst({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        transactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+      },
+    });
+
+    if (!creditBalance) {
+      creditBalance = await this.prisma.creditBalance.create({
+        data: {
+          organizationId,
+          balance: 0,
+          currency: 'USD',
+        },
+        include: {
+          transactions: true,
+        },
+      });
+    }
+
+    return creditBalance;
+  }
+
+  /**
+   * Atomically deducts credits from an organization's CreditBalance and records
+   * a USAGE CreditTransaction in the ledger.
+   */
+  async deductCredits(organizationId: string, amount: number, description?: string) {
+    if (amount <= 0) {
+      throw new BadRequestException('Credit deduction amount must be positive.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const creditBalance = await tx.creditBalance.findFirst({
+        where: { organizationId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!creditBalance || creditBalance.balance < amount) {
+        throw new BadRequestException(
+          `Insufficient credit balance. Current balance: ${creditBalance?.balance ?? 0}, required: ${amount}`,
+        );
+      }
+
+      const updated = await tx.creditBalance.update({
+        where: { id: creditBalance.id },
+        data: { balance: { decrement: amount } },
+      });
+
+      const txRecord = await tx.creditTransaction.create({
+        data: {
+          creditId: creditBalance.id,
+          amount: -amount,
+          type: 'USAGE',
+          description: description || 'Credit deduction for usage',
+        },
+      });
+
+      return { success: true, balance: updated.balance, transaction: txRecord };
     });
   }
 

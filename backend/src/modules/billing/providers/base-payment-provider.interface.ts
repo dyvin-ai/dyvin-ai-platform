@@ -52,7 +52,8 @@ export interface CheckoutSessionOutput {
 }
 
 export interface VerifyPaymentInput {
-  orderId: string;
+  orderId?: string;
+  subscriptionId?: string;
   paymentId: string;
   signature: string;
 }

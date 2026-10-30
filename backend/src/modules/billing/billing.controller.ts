@@ -31,7 +31,8 @@ export class CreateCheckoutDto {
 
 export class VerifyPaymentDto {
   providerCode!: PaymentProviderCode;
-  orderId!: string;
+  orderId?: string;
+  subscriptionId?: string;
   paymentId!: string;
   signature!: string;
 }
@@ -182,6 +183,18 @@ export class BillingController {
   @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
   async getUsage(@Headers('x-organization-id') organizationId: string) {
     return this.billingEngine.getUsage(organizationId);
+  }
+
+  @Get('credits')
+  @Roles(Role.VIEWER)
+  @ApiOperation({
+    summary: 'Get Organization Credit Balance',
+    description: 'Retrieves current credit balance and recent credit ledger transactions. Requires verified membership in the specified organization.',
+  })
+  @ApiResponse({ status: 200, description: 'Organization credit balance and ledger.' })
+  @ApiResponse({ status: 403, description: 'Forbidden — not a member of the specified organization.' })
+  async getCredits(@Headers('x-organization-id') organizationId: string) {
+    return this.billingEngine.getCreditBalance(organizationId);
   }
 
   @Get('invoices')

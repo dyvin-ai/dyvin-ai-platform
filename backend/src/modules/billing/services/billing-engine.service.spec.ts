@@ -210,5 +210,86 @@ describe('BillingEngineService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should verify Razorpay subscription using subscriptionId', async () => {
+      mockProvider.verifyPaymentWithProvider.mockResolvedValue({
+        valid: true,
+        verified: true,
+        subscriptionId: 'sub_123',
+        paymentId: 'pay_123',
+        status: 'captured',
+        organizationId: 'org-1',
+      });
+
+      const res = await service.verifyPayment('org-1', 'user-1', {
+        providerCode: PaymentProviderCode.RAZORPAY,
+        subscriptionId: 'sub_123',
+        paymentId: 'pay_123',
+        signature: 'valid_sig',
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.subscriptionId).toBe('sub_123');
+    });
+
+    it('should throw ForbiddenException when payment organization mismatches', async () => {
+      mockProvider.verifyPaymentWithProvider.mockResolvedValue({
+        valid: true,
+        verified: true,
+        orderId: 'order_123',
+        paymentId: 'pay_123',
+        status: 'captured',
+        organizationId: 'org-attacker',
+      });
+
+      await expect(
+        service.verifyPayment('org-victim', 'user-1', {
+          providerCode: PaymentProviderCode.RAZORPAY,
+          orderId: 'order_123',
+          paymentId: 'pay_123',
+          signature: 'valid_sig',
+        }),
+      ).rejects.toThrow('Razorpay payment does not belong to the active organization.');
+    });
+
+    it('should verify Stripe session with Stripe provider', async () => {
+      mockProvider.verifySession.mockResolvedValue({
+        valid: true,
+        sessionId: 'cs_123',
+        paymentStatus: 'paid',
+        status: 'complete',
+        organizationId: 'org-1',
+        amount: 49,
+        currency: 'USD',
+      });
+
+      const res = await service.verifyPayment('org-1', 'user-1', {
+        providerCode: PaymentProviderCode.STRIPE,
+        orderId: 'cs_123',
+        paymentId: '',
+        signature: '',
+      });
+
+      expect(res.verified).toBe(true);
+      expect(res.providerCode).toBe(PaymentProviderCode.STRIPE);
+    });
+
+    it('should throw BadRequestException when mock provider used in production', async () => {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        await expect(
+          service.verifyPayment('org-1', 'user-1', {
+            providerCode: PaymentProviderCode.MOCK,
+            orderId: 'mock_1',
+            paymentId: 'mock_1',
+            signature: '',
+          }),
+        ).rejects.toThrow('Mock payment verification is forbidden in production.');
+      } finally {
+        process.env.NODE_ENV = origEnv;
+      }
+    });
   });
 });

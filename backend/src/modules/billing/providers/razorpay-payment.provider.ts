@@ -178,11 +178,24 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
       return false;
     }
 
-    if (!input.orderId || !input.paymentId || !input.signature) {
+    if (!input.paymentId || !input.signature) {
       return false;
     }
 
-    const payload = `${input.orderId}|${input.paymentId}`;
+    const subId = input.subscriptionId || (input.orderId?.startsWith('sub_') ? input.orderId : undefined);
+    const orderId = !input.orderId?.startsWith('sub_') ? input.orderId : undefined;
+
+    let payload: string;
+    if (subId) {
+      // For Razorpay Subscriptions: payment_id + "|" + subscription_id
+      payload = `${input.paymentId}|${subId}`;
+    } else if (orderId) {
+      // For Razorpay Orders: order_id + "|" + payment_id
+      payload = `${orderId}|${input.paymentId}`;
+    } else {
+      return false;
+    }
+
     const expectedHmac = crypto
       .createHmac('sha256', secret)
       .update(payload, 'utf8')
@@ -200,35 +213,51 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
 
   async verifyPaymentWithProvider(input: VerifyPaymentInput): Promise<{
     valid: boolean;
-    orderId: string;
+    orderId?: string;
+    subscriptionId?: string;
     paymentId: string;
     organizationId?: string;
     amount?: number;
     currency?: string;
     status?: string;
   }> {
-    // 1. Validate signature using HMAC-SHA256(order_id + "|" + payment_id, secret)
+    const subId = input.subscriptionId || (input.orderId?.startsWith('sub_') ? input.orderId : undefined);
+    const orderId = !input.orderId?.startsWith('sub_') ? input.orderId : undefined;
+
+    // 1. Validate signature using constant-time comparison
     const signatureValid = this.verifyPaymentSignature(input);
     if (!signatureValid) {
-      this.logger.warn(`[Razorpay] Payment signature check failed for order [${input.orderId}] payment [${input.paymentId}]`);
-      return { valid: false, orderId: input.orderId, paymentId: input.paymentId };
+      this.logger.warn(
+        `[Razorpay] Payment signature check failed for ${subId ? `subscription [${subId}]` : `order [${orderId}]`} payment [${input.paymentId}]`,
+      );
+      return { valid: false, orderId, subscriptionId: subId, paymentId: input.paymentId };
     }
 
-    // 2. Query Razorpay API to verify payment entity, order linkage, and capture status
+    // 2. Query Razorpay API to verify payment entity, order/subscription linkage, and capture status
     const rzp = this.getRazorpayClient();
     try {
       const payment = await (rzp.payments.fetch as any)(input.paymentId);
-      const matchesOrder = payment.order_id === input.orderId;
+      
+      let matchesLinkage = false;
+      if (subId) {
+        matchesLinkage = payment.subscription_id === subId || payment.notes?.subscriptionId === subId;
+      } else if (orderId) {
+        matchesLinkage = payment.order_id === orderId;
+      }
+
       const isCapturedOrAuthorized = payment.status === 'captured' || payment.status === 'authorized';
       const organizationId = payment.notes?.organizationId;
 
-      if (!matchesOrder) {
-        this.logger.warn(`[Razorpay] Payment [${input.paymentId}] order_id mismatch: expected [${input.orderId}], got [${payment.order_id}]`);
+      if (!matchesLinkage) {
+        this.logger.warn(
+          `[Razorpay] Payment [${input.paymentId}] linkage mismatch: expected ${subId ? `sub [${subId}]` : `order [${orderId}]`}, payment has order_id=[${payment.order_id}], subscription_id=[${payment.subscription_id}]`,
+        );
       }
 
       return {
-        valid: signatureValid && matchesOrder && isCapturedOrAuthorized,
-        orderId: input.orderId,
+        valid: signatureValid && matchesLinkage && isCapturedOrAuthorized,
+        orderId,
+        subscriptionId: subId,
         paymentId: input.paymentId,
         organizationId,
         amount: payment.amount ? Number(payment.amount) / 100 : undefined,
@@ -239,7 +268,8 @@ export class RazorpayPaymentProvider implements BasePaymentProvider {
       this.logger.error(`[Razorpay] Failed to fetch payment entity [${input.paymentId}]: ${err.message}`, err.stack);
       return {
         valid: false,
-        orderId: input.orderId,
+        orderId,
+        subscriptionId: subId,
         paymentId: input.paymentId,
       };
     }

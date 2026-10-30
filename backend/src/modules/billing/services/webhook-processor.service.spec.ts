@@ -510,5 +510,105 @@ describe('WebhookProcessorService', () => {
       // payment.create should NOT have been called because findFirst returned an existing payment
       expect(prismaMock.payment.create).not.toHaveBeenCalled();
     });
+
+    it('should process Razorpay subscription.charged and update active subscription', async () => {
+      prismaMock.organizationSubscription.findFirst.mockResolvedValueOnce({
+        id: 'sub-existing',
+        externalSubId: 'sub_rzp_charged_123',
+      });
+
+      const res = await service.processWebhook({
+        providerCode: PaymentProviderCode.RAZORPAY,
+        signature: 'valid_sig',
+        body: {
+          id: 'evt_rzp_sub_charged',
+          event: 'subscription.charged',
+          payload: {
+            subscription: {
+              entity: {
+                id: 'sub_rzp_charged_123',
+                status: 'active',
+                current_start: 1700000000,
+                current_end: 1702592000,
+                notes: { organizationId: 'org-1' },
+              },
+            },
+            payment: {
+              entity: {
+                id: 'pay_sub_charged_123',
+                amount: 4900,
+                currency: 'INR',
+                status: 'captured',
+                notes: { organizationId: 'org-1' },
+              },
+            },
+          },
+        },
+      });
+
+      expect(res.success).toBe(true);
+      expect(prismaMock.organizationSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sub-existing' },
+          data: expect.objectContaining({ status: SubscriptionStatus.ACTIVE }),
+        }),
+      );
+    });
+
+    it('should process Razorpay subscription.cancelled and mark subscription CANCELED', async () => {
+      prismaMock.organizationSubscription.findFirst.mockResolvedValueOnce({
+        id: 'sub-existing',
+        externalSubId: 'sub_rzp_cancel_123',
+      });
+
+      const res = await service.processWebhook({
+        providerCode: PaymentProviderCode.RAZORPAY,
+        signature: 'valid_sig',
+        body: {
+          id: 'evt_rzp_sub_cancel',
+          event: 'subscription.cancelled',
+          payload: {
+            subscription: {
+              entity: {
+                id: 'sub_rzp_cancel_123',
+                status: 'cancelled',
+                notes: { organizationId: 'org-1' },
+              },
+            },
+          },
+        },
+      });
+
+      expect(res.success).toBe(true);
+      expect(prismaMock.organizationSubscription.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'sub-existing' },
+          data: expect.objectContaining({ status: SubscriptionStatus.CANCELED }),
+        }),
+      );
+    });
+
+    it('should throw NotFoundException when Razorpay subscription is unmapped', async () => {
+      prismaMock.organizationSubscription.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.processWebhook({
+          providerCode: PaymentProviderCode.RAZORPAY,
+          signature: 'valid_sig',
+          body: {
+            id: 'evt_rzp_unmapped',
+            event: 'subscription.cancelled',
+            payload: {
+              subscription: {
+                entity: {
+                  id: 'sub_unknown_999',
+                  notes: { organizationId: 'org-1' },
+                },
+              },
+            },
+          },
+        }),
+      ).rejects.toThrow('Subscription not found for Razorpay subscription ID: sub_unknown_999');
+    });
   });
 });

@@ -21,7 +21,8 @@ export interface CreateCheckoutInput {
 
 export interface VerifyPaymentInput {
   providerCode: PaymentProviderCode;
-  orderId: string;
+  orderId?: string;
+  subscriptionId?: string;
   paymentId: string;
   signature: string;
 }
@@ -184,6 +185,7 @@ export class BillingEngineService {
       const rzpProvider = this.providerRouter.getProvider(PaymentProviderCode.RAZORPAY) as RazorpayPaymentProvider;
       const result = await rzpProvider.verifyPaymentWithProvider({
         orderId: input.orderId,
+        subscriptionId: input.subscriptionId,
         paymentId: input.paymentId,
         signature: input.signature,
       });
@@ -203,6 +205,7 @@ export class BillingEngineService {
         providerCode: PaymentProviderCode.RAZORPAY,
         status: result.status,
         orderId: result.orderId,
+        subscriptionId: result.subscriptionId,
         paymentId: result.paymentId,
         amount: result.amount,
         currency: result.currency,
@@ -215,6 +218,10 @@ export class BillingEngineService {
 
   getUsage(organizationId: string) {
     return this.quotaEnforcement.getOrganizationUsage(organizationId);
+  }
+
+  getCreditBalance(organizationId: string) {
+    return this.quotaEnforcement.getCreditBalance(organizationId);
   }
 
   recordUsage(organizationId: string, metricType: UsageMetricType, quantity: number = 1) {

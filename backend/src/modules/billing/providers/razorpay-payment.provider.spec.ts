@@ -34,6 +34,19 @@ describe('RazorpayPaymentProvider', () => {
         cancel: jest.fn().mockResolvedValue({ id: 'sub_rzp_mock_123', status: 'cancelled' }),
         update: jest.fn().mockResolvedValue({ id: 'sub_rzp_mock_123', status: 'active' }),
       },
+      payments: {
+        fetch: jest.fn().mockImplementation((paymentId) =>
+          Promise.resolve({
+            id: paymentId,
+            order_id: 'order_123',
+            subscription_id: 'sub_123',
+            amount: 50000,
+            currency: 'INR',
+            status: 'captured',
+            notes: { organizationId: 'org-1' },
+          }),
+        ),
+      },
     };
 
     (provider as any).getRazorpayClient = jest.fn().mockImplementation(() => {
@@ -168,6 +181,130 @@ describe('RazorpayPaymentProvider', () => {
       });
 
       expect(isValid).toBe(false);
+    });
+
+    it('should verify signature for subscription payload (payment_id|subscription_id)', () => {
+      const secret = 'rzp_mock_secret_12345';
+      const subId = 'sub_123';
+      const paymentId = 'pay_456';
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(`${paymentId}|${subId}`)
+        .digest('hex');
+
+      const isValid = provider.verifyPaymentSignature({
+        subscriptionId: subId,
+        paymentId,
+        signature: expectedSignature,
+      });
+
+      expect(isValid).toBe(true);
+    });
+  });
+
+  describe('verifyPaymentWithProvider', () => {
+    it('should verify payment with provider API for valid order', async () => {
+      const secret = 'rzp_mock_secret_12345';
+      const orderId = 'order_123';
+      const paymentId = 'pay_456';
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      const res = await provider.verifyPaymentWithProvider({
+        orderId,
+        paymentId,
+        signature,
+      });
+
+      expect(res.valid).toBe(true);
+      expect(res.orderId).toBe('order_123');
+      expect(res.amount).toBe(500); // 50000 paise / 100
+      expect(res.currency).toBe('INR');
+      expect(res.status).toBe('captured');
+    });
+
+    it('should verify payment with provider API for valid subscription', async () => {
+      const secret = 'rzp_mock_secret_12345';
+      const subId = 'sub_123';
+      const paymentId = 'pay_456';
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${paymentId}|${subId}`)
+        .digest('hex');
+
+      const res = await provider.verifyPaymentWithProvider({
+        subscriptionId: subId,
+        paymentId,
+        signature,
+      });
+
+      expect(res.valid).toBe(true);
+      expect(res.subscriptionId).toBe('sub_123');
+    });
+
+    it('should return valid: false when orderId mismatches provider data', async () => {
+      const secret = 'rzp_mock_secret_12345';
+      const orderId = 'order_different';
+      const paymentId = 'pay_456';
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      // mock fetch returns order_id: 'order_123'
+      const res = await provider.verifyPaymentWithProvider({
+        orderId,
+        paymentId,
+        signature,
+      });
+
+      expect(res.valid).toBe(false);
+    });
+
+    it('should return valid: false when payment status is not captured or authorized', async () => {
+      mockRazorpayInstance.payments.fetch.mockResolvedValueOnce({
+        id: 'pay_failed',
+        order_id: 'order_123',
+        status: 'failed',
+      });
+
+      const secret = 'rzp_mock_secret_12345';
+      const orderId = 'order_123';
+      const paymentId = 'pay_failed';
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      const res = await provider.verifyPaymentWithProvider({
+        orderId,
+        paymentId,
+        signature,
+      });
+
+      expect(res.valid).toBe(false);
+    });
+
+    it('should return valid: false when provider fetch throws', async () => {
+      mockRazorpayInstance.payments.fetch.mockRejectedValueOnce(new Error('Razorpay network error'));
+
+      const secret = 'rzp_mock_secret_12345';
+      const orderId = 'order_123';
+      const paymentId = 'pay_err';
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      const res = await provider.verifyPaymentWithProvider({
+        orderId,
+        paymentId,
+        signature,
+      });
+
+      expect(res.valid).toBe(false);
     });
   });
 
